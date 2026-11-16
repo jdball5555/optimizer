@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Optimizer's calendar: settings, the copy of your Google events, Canvas
+    // feeds and their assignments, and devices for notifications. Yours only.
+    match /axisCalendar/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Optimizer: dashboard layout, trips, the assistant's settings and chats,
+    // and your copies of invitations and shared trips. Yours only.
+    match /optimizer/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Axis Journal entries: each one carries its owner's uid.
+    match /axis_journal_entries/{docId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Server-only, so there are deliberately no rules for them (no app can
+    // read or write them): optimizerSecrets (Google sign-ins), optimizerPeople,
+    // optimizerInvites, optimizerEvents, optimizerGroups, optimizerTripShares.
+  }
+}

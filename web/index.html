@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Axis Optimizer: your calendar, journal and net worth in one place.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Optimizer">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Optimizer</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* No rubber-band bounce or back/forward page swipe at the edges. */
+    html, body { overscroll-behavior: none; }
+    /* Flutter draws text itself and keeps a hidden text box under each
+       multi-line field for typing; extensions like Grammarly read that box.
+       Flutter copies only the font to it, so give it the same line spacing
+       as those fields (1.65) or Grammarly's underlines drift off the lines. */
+    textarea { line-height: 1.65 !important; }
+  </style>
+</head>
+<body>
+  <script>
+    // On a Mac trackpad, a sideways swipe that reaches the end of something
+    // scrollable (like the calendar's hours) makes the browser go back or
+    // forward a page, leaving Optimizer. Flutter still gets every scroll; this
+    // only stops the browser acting on the sideways ones.
+    window.addEventListener('wheel', function (e) {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) e.preventDefault();
+    }, { passive: false });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

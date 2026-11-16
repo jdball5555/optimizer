@@ -1,0 +1,5 @@
+{
+  // Always serve the web app on port 5050 so Google sign-in accepts it,
+  // no matter how the app is launched (play button, Run link, F5).
+  "dart.flutterRunAdditionalArgs": ["--web-port", "5050"]
+}
