@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org): **major** for redesig
 
 The repository starts at v0.3.1. Earlier versions were released to the website before the project was in git, so they are listed here but have no tagged source.
 
+## [1.0.1] — 2026-11-23
+
+### Security
+- Premium beta's features are checked on the server too, not only hidden in the app: address search, flight and commute lookups, Google Calendar (linking, syncing, events) and sharing (people, groups, event guests, trip sharing). Disconnecting Google and answering or leaving an invitation stay open to everyone. The every-minute Google Calendar check skips accounts without premium beta
+- New accounts get an email to verify their address. Invitations and anything shared with you are matched by email, so they need a verified one: until then you aren't listed for others to find, and an invitation link can only be claimed by the address it was sent to. Settings shows "Verify your email" with a Resend button until it's done
+- Canvas links can only reach the public internet: every check (not only adding one) requires https and refuses private, loopback, link-local (including the metadata server), carrier-grade NAT and IPv6 local addresses, and internal host names, on every redirect too (at most 5)
+- firestore.rules, the live rules for the whole project, is now in the repo (it was git-ignored); the outdated firestore.rules.example is gone
+
 ## [1.0.0] — 2026-11-23
 
 ### Added
@@ -108,5 +116,6 @@ The repository starts at v0.3.1. Earlier versions were released to the website b
 ### Added
 - First version: Home dashboard, Google Calendar with a sideways week, Canvas calendar feeds with push notifications, the Axis Journal, and net worth from Asset Track
 
+[1.0.1]: https://github.com/jdball5555/optimizer/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jdball5555/optimizer/releases/tag/v1.0.0
 [0.3.1]: https://github.com/jdball5555/optimizer/releases/tag/v0.3.1

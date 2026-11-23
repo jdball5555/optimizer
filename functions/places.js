@@ -4,15 +4,14 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { placesRequest: places } = require("./places_api");
 const { normalizeSuggestions, placeZoneOf } = require("./trips_core");
+const { requirePremiumBeta } = require("./premium");
 
-function requireUid(request) {
-  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
-}
+// Addresses are for the calendar's events and Trips: premium beta's.
 
 const session = (d) => (/^[\w-]{1,36}$/.test(String(d.session || "")) ? String(d.session) : undefined);
 
 exports.placeSuggest = onCall({ timeoutSeconds: 15 }, async (request) => {
-  requireUid(request);
+  requirePremiumBeta(request);
   const d = request.data || {};
   const input = String(d.input || "").trim().slice(0, 200);
   if (input.length < 3) return { suggestions: [] };
@@ -33,7 +32,7 @@ exports.placeSuggest = onCall({ timeoutSeconds: 15 }, async (request) => {
 
 /** Ends a typing session, and says where the pick is so later suggestions lean nearby. */
 exports.placeDetails = onCall({ timeoutSeconds: 15 }, async (request) => {
-  requireUid(request);
+  requirePremiumBeta(request);
   const d = request.data || {};
   const id = String(d.id || "");
   if (!/^[\w-]{1,500}$/.test(id)) throw new HttpsError("invalid-argument", "Which place?");
@@ -45,7 +44,7 @@ exports.placeDetails = onCall({ timeoutSeconds: 15 }, async (request) => {
 
 /** The time zone of a place, typed or picked: { zone }, null if Google can't tell. */
 exports.placeZone = onCall({ timeoutSeconds: 15 }, async (request) => {
-  requireUid(request);
+  requirePremiumBeta(request);
   const place = String((request.data && request.data.place) || "").trim().slice(0, 300);
   if (!place) throw new HttpsError("invalid-argument", "Which place?");
   const json = await places("places:searchText", { mask: "places.timeZone", body: { textQuery: place, pageSize: 1 } });

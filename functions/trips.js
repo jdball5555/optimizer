@@ -16,14 +16,12 @@ const { placesRequest } = require("./places_api");
 
 const PROJECT = process.env.GCLOUD_PROJECT || "project-axis-app";
 
-function requireUid(request) {
-  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
-  return request.auth.uid;
-}
+// Flight and commute lookups are for Trips: premium beta's.
+const { requirePremiumBeta } = require("./premium");
 
 /** Every leg flying under a flight number on a date (the date at the departure airport). */
 exports.lookupFlight = onCall({ /* secrets: ["AERODATABOX_KEY"], */ timeoutSeconds: 30 }, async (request) => {
-  requireUid(request);
+  requirePremiumBeta(request);
   const number = cleanFlightNumber(request.data && request.data.number);
   const date = String((request.data && request.data.date) || "");
   if (!number) throw new HttpsError("invalid-argument", "That doesn't look like a flight number. Try something like AA 1234.");
@@ -116,7 +114,7 @@ async function findPlace(text) {
 
 /** How long a commute takes at that time of that day: { minutes, meters, leaveAt, arriveAt, predicted }, and { from, to } if it had to work out what you typed. */
 exports.commuteTime = onCall({ timeoutSeconds: 60 }, async (request) => {
-  requireUid(request);
+  requirePremiumBeta(request);
   const d = request.data || {};
   const from = String(d.from || "").trim().slice(0, 300);
   const to = String(d.to || "").trim().slice(0, 300);

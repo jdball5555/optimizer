@@ -9,7 +9,8 @@
 //                                               lastSync, error), autoSync, and keepPast (below)
 //   axisCalendar/{uid}/events/{calendarKey|id}  every event from 6 weeks back to 6 months ahead
 //
-// Every minute pollGoogleCalendars checks each linked account. A check where
+// Every minute pollGoogleCalendars checks each linked account with premium
+// beta (Google Calendar is theirs). A check where
 // nothing changed costs one Firestore read per account and no writes.
 //
 // With keepPast on, an event that's over is kept in Optimizer as it was:
@@ -349,6 +350,10 @@ function requireUid(request) {
   return request.auth.uid;
 }
 
+// Google Calendar is the Calendar page's: premium beta's. Disconnecting
+// (unlinkGoogleAccount) stays open to everyone, so no one is stuck linked.
+const { requirePremiumBeta, premiumUids } = require("./premium");
+
 async function linkedAccounts(uid) {
   return (await accountsOf(uid).get()).docs.filter((d) => !d.data().revoked);
 }
@@ -372,7 +377,7 @@ const withSecret = { secrets: [CLIENT_SECRET], timeoutSeconds: 120 };
 
 /** Finishes linking a Google account: [code] is what Google's sign-in popup handed the app. */
 exports.linkGoogleAccount = onCall(withSecret, async (request) => {
-  const uid = requireUid(request);
+  const uid = requirePremiumBeta(request);
   const code = String((request.data && request.data.code) || "");
   if (!code) throw new HttpsError("invalid-argument", "Google didn't hand over a sign-in code.");
   // The page Google sent you back to (the redirect flow), or "postmessage"
@@ -412,7 +417,7 @@ exports.linkGoogleAccount = onCall(withSecret, async (request) => {
 
 /** Checks every linked account now (the Sync button). [from]/[to] (ms) also sync a far-off span. */
 exports.syncGoogleNow = onCall(withSecret, async (request) => {
-  const uid = requireUid(request);
+  const uid = requirePremiumBeta(request);
   const from = Number(request.data && request.data.from) || null;
   const to = Number(request.data && request.data.to) || null;
   const range = from && to && to > from && to - from <= 400 * DAY ? { from, to } : null;
@@ -460,7 +465,7 @@ exports.unlinkGoogleAccount = onCall(withSecret, async (request) => {
  * past year now; otherwise its events from before now are never saved.
  */
 exports.resolvePastEvents = onCall(withSecret, async (request) => {
-  const uid = requireUid(request);
+  const uid = requirePremiumBeta(request);
   const calendarKey = String((request.data && request.data.calendarKey) || "");
   const keep = !!(request.data && request.data.keep);
   if (!calendarKey) throw new HttpsError("invalid-argument", "Which calendar?");
@@ -512,7 +517,7 @@ async function storeEvent(uid, calendarKey, ev) {
  * calendar when it's being moved: it's created in the new one and deleted there.
  */
 exports.saveGoogleEvent = onCall(withSecret, async (request) => {
-  const uid = requireUid(request);
+  const uid = requirePremiumBeta(request);
   const { calendarKey, eventId, body, moveFrom } = request.data || {};
   if (!calendarKey || !body || typeof body !== "object") throw new HttpsError("invalid-argument", "Nothing to save.");
   try {
@@ -541,7 +546,7 @@ async function deleteEvent(uid, calendarKey, eventId) {
 }
 
 exports.deleteGoogleEvent = onCall(withSecret, async (request) => {
-  const uid = requireUid(request);
+  const uid = requirePremiumBeta(request);
   const { calendarKey, eventId } = request.data || {};
   if (!calendarKey || !eventId) throw new HttpsError("invalid-argument", "Which event?");
   try {
@@ -559,11 +564,14 @@ exports.pollGoogleCalendars = onSchedule(
   async () => {
     const accounts = (await db.collectionGroup("googleAccounts").get()).docs
       .filter((d) => d.ref.parent.parent && d.ref.parent.parent.parent.id === "optimizerSecrets" && !d.data().revoked);
-    // Skip anyone who turned auto-sync off.
-    const uids = [...new Set(accounts.map((d) => d.ref.parent.parent.id))];
+    // Only premium beta's accounts (Google Calendar is theirs), and not anyone
+    // who turned auto-sync off.
+    const premium = await premiumUids([...new Set(accounts.map((d) => d.ref.parent.parent.id))]);
+    const uids = [...premium];
     const settings = new Map();
     await Promise.all(uids.map(async (uid) => settings.set(uid, (await userDoc(uid).get()).data() || {})));
-    await mapLimit(accounts.filter((d) => settings.get(d.ref.parent.parent.id).autoSync !== false), 5, async (d) => {
+    const due = accounts.filter((d) => premium.has(d.ref.parent.parent.id) && settings.get(d.ref.parent.parent.id).autoSync !== false);
+    await mapLimit(due, 5, async (d) => {
       try {
         await syncAccount(d.ref.parent.parent.id, d.ref, d.data(), { settings: settings.get(d.ref.parent.parent.id) });
       } catch (e) {

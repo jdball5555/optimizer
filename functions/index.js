@@ -20,9 +20,9 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const { parseCalendar } = require("./ics");
 const { notifyUser } = require("./notify");
-const { getAuth } = require("firebase-admin/auth");
-const { hasPremiumBeta, userHasPremiumBeta } = require("./premium");
+const { hasPremiumBeta, premiumUids } = require("./premium");
 const { takeRefresh, waitText } = require("./refresh_limit");
+const { fetchPublic } = require("./safe_fetch");
 
 initializeApp();
 const db = getFirestore();
@@ -59,11 +59,19 @@ function canvasFeedUrl(raw) {
 }
 
 async function download(url) {
+  // The stored link is checked again every time, not only when it was added:
+  // a Canvas feed link, and (in fetchPublic) https to public addresses only,
+  // on every redirect too.
+  let link;
+  try {
+    link = canvasFeedUrl(url);
+  } catch (e) {
+    throw new Error(e.message);
+  }
   let res;
   try {
-    res = await fetch(url, {
+    res = await fetchPublic(link, {
       headers: { "User-Agent": "Axis Optimizer (calendar feed reader)", "Accept": "text/calendar,*/*" },
-      redirect: "follow",
       signal: AbortSignal.timeout(20000),
     });
   } catch (e) {
@@ -351,16 +359,6 @@ exports.sendTestNotification = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------- every minute
-
-/** Which of these accounts have premium beta (by their sign-in claim, the one that counts). */
-async function premiumUids(uids) {
-  const out = new Set();
-  for (let i = 0; i < uids.length; i += 100) {
-    const { users } = await getAuth().getUsers(uids.slice(i, i + 100).map((uid) => ({ uid })));
-    for (const u of users) if (userHasPremiumBeta(u)) out.add(u.uid);
-  }
-  return out;
-}
 
 exports.pollCanvasFeeds = onSchedule(
   { schedule: "every 1 minutes", timeoutSeconds: 55, memory: "256MiB", retryCount: 0, maxInstances: 1 },

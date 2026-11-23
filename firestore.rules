@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+    // Email-matched things (invitations) need a proven email: otherwise anyone
+    // could sign up with someone else's address and receive their invitations.
+    function myVerifiedEmail() {
+      return request.auth.token.email_verified == true ? request.auth.token.email : null;
+    }
+
+    // 1. USERS: your own user doc and everything under it (analytics, ...).
+    match /users/{userId} {
+      allow read, write: if isUser(userId);
+      match /{document=**} {
+        allow read, write: if isUser(userId);
+      }
+    }
+
+    // 2. ASSET TRACK: your own financial data only.
+    match /assetTrack/{userId} {
+      allow read, write: if isUser(userId);
+      match /{document=**} {
+        allow read, write: if isUser(userId);
+      }
+    }
+
+    // 2b. OPTIMIZER CALENDAR
+    match /axisCalendar/{userId} {
+      allow read, write: if isUser(userId);
+
+      // Feeds are added and removed by the server, which checks the link.
+      // The app may only change how a feed is shown, never its link.
+      match /canvasFeeds/{feedId} {
+        allow read: if isUser(userId);
+        allow update: if isUser(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['courseColors', 'todoList', 'notifyNew', 'notifyChanges']);
+      }
+      // Assignments: written only by the server, from the feeds.
+      match /canvasItems/{itemId} {
+        allow read: if isUser(userId);
+      }
+      // Everything else of yours: to-dos, lists, task status, devices, history.
+      match /{collection}/{document=**} {
+        allow read, write: if isUser(userId) && !(collection in ['canvasFeeds', 'canvasItems']);
+      }
+    }
+
+    // 2c. OPTIMIZER
+    match /optimizer/{userId} {
+      allow read: if isUser(userId);
+      // premiumBeta is the server's copy of the premium claim, never the app's.
+      allow create: if isUser(userId) && !('premiumBeta' in request.resource.data);
+      allow update: if isUser(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['premiumBeta']);
+
+      // The assistant's daily usage count belongs to the server (it caps cost).
+      match /aiUsage/{day} {
+        allow read: if isUser(userId);
+      }
+      match /{collection}/{document=**} {
+        allow read, write: if isUser(userId) && collection != 'aiUsage';
+      }
+    }
+
+    // 3. AXIS APP HOUSEHOLDS (inventories): only their members.
+    match /households/{householdId} {
+      function members() {
+        return resource.data.members;
+      }
+      allow read: if signedIn() && request.auth.uid in members();
+      allow create: if signedIn()
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.members == [request.auth.uid];
+      // Members change the household; anyone else may only add themselves
+      // (accepting an invitation, which is how they learn its id).
+      allow update: if signedIn() && (
+        (request.auth.uid in members()
+          && request.resource.data.owner == resource.data.owner)
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          && request.resource.data.members.toSet() == members().toSet().union([request.auth.uid].toSet()))
+      );
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
+
+      // Inventory, activity log and everything else inside: members only.
+      match /{document=**} {
+        allow read, write: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members;
+      }
+    }
+
+    // Household invitations: the inviter (a member) and the invitee only.
+    match /invitations/{inviteId} {
+      allow create: if signedIn()
+        && request.resource.data.inviterUid == request.auth.uid
+        && request.auth.uid in get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members;
+      allow read, update, delete: if signedIn() && (
+        resource.data.inviterUid == request.auth.uid
+        || (myVerifiedEmail() != null && resource.data.email == myVerifiedEmail())
+      );
+    }
+
+    // 4. APP CONFIG: readable by signed-in apps; changed only from the
+    // Firebase console or a server.
+    match /app_config/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // 5. PER-USER RECORDS: each one carries its owner's uid in userId.
+    match /report_requests/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /training_data/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+    match /ai_logs/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // game_groups: Scorecards lives in its own Firebase project, so nothing
+    // here needs it. No rule = no access.
+
+    // 6. AXIS JOURNAL: your own entries only, and an update can't hand an
+    // entry to someone else.
+    match /axis_journal_entries/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+    match /axis_journal_habits/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+    match /axis_journal_habit_logs/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+    match /axis_journal_ai_conversations/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+    match /axis_journal_debriefs/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+    match /axis_journal_reading_log/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Server-only (no rule = no app can read or write them): optimizerSecrets,
+    // optimizerPeople, optimizerInvites, optimizerEvents, optimizerGroups,
+    // optimizerTripShares.
+  }
+}

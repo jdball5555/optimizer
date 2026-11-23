@@ -25,6 +25,7 @@ import '../theme.dart';
 import '../todos/todos_page.dart';
 import 'side_nav.dart';
 import '../auth/invite_link.dart';
+import '../auth/profile.dart';
 import '../people/people_page.dart';
 import '../people/people_service.dart';
 import '../trips/trip_store.dart';
@@ -373,11 +374,24 @@ class _AppShellState extends State<AppShell> {
 
   /// On Optimizer's list of people (so others can invite you), and, after
   /// signing up from an emailed invitation, that invitation becomes yours.
+  ///
+  /// Both need a verified email (the server matches invitations by it): an
+  /// account just verified gets a fresh sign-in first, so the server sees it.
+  /// Until then registerMe does nothing, and an invitation waits for your
+  /// email to be verified (registerMe picks it up then).
   Future<void> _joinPeople() async {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && !user.emailVerified) {
+        await user.reload();
+        if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
+          await FirebaseAuth.instance.currentUser!.getIdToken(true);
+          profileChanged.value++;
+        }
+      }
       await _people.registerMe(FirebaseAuth.instance.currentUser?.displayName ?? widget.user.displayName);
       final token = pendingInviteToken;
-      if (token != null) {
+      if (token != null && FirebaseAuth.instance.currentUser?.emailVerified == true) {
         pendingInviteToken = null;
         await _people.claimInvite(token);
         if (mounted) setState(() => _index = _peoplePage);

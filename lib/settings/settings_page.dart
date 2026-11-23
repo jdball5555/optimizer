@@ -236,6 +236,15 @@ class SettingsPage extends StatelessWidget {
                                 if (premium.on) const Padding(padding: EdgeInsets.only(top: 4), child: PremiumBetaBadge()),
                               ]),
                       ),
+                      if (user.email != null && !user.emailVerified)
+                        ListTile(
+                          leading: const Icon(Icons.mark_email_unread_outlined),
+                          title: const Text('Verify your email'),
+                          subtitle: const Text('Open the link we emailed you, so people can share events and trips with you',
+                              style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
+                          trailing: TextButton(onPressed: () => _resendVerification(context), child: const Text('Resend')),
+                          onTap: () => _checkVerified(context),
+                        ),
                       ListTile(
                         leading: const Icon(Icons.logout, color: AppColors.danger),
                         title: const Text('Sign out', style: TextStyle(color: AppColors.danger)),
@@ -256,6 +265,34 @@ class SettingsPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _resendVerification(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await user.sendEmailVerification();
+      messenger.showSnackBar(SnackBar(content: Text('Sent to ${user.email}. Check your spam folder too.')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Couldn’t send it: $e')));
+    }
+  }
+
+  /// After opening the link: picks it up now, rather than next time.
+  Future<void> _checkVerified(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await user.reload();
+      final fresh = FirebaseAuth.instance.currentUser;
+      if (fresh?.emailVerified == true) {
+        await fresh!.getIdToken(true);
+        profileChanged.value++;
+        messenger.showSnackBar(const SnackBar(content: Text('Email verified')));
+      } else {
+        messenger.showSnackBar(const SnackBar(content: Text('Not verified yet. Open the link in the email, then tap here again.')));
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Couldn’t check: $e')));
+    }
   }
 
   /// Your name, as Optimizer (and your other Axis apps) show it.

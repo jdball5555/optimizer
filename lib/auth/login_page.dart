@@ -120,7 +120,12 @@ class _LoginPageState extends State<LoginPage> {
     signInHold.value = true;
     try {
       final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
-      if (cred.user != null) await saveDisplayName(cred.user!, name);
+      if (cred.user != null) {
+        await saveDisplayName(cred.user!, name);
+        // Proves the address is yours: invitations and anything shared with
+        // you are matched by it. (Settings can send it again.)
+        await cred.user!.sendEmailVerification().catchError((Object _) {});
+      }
     } on FirebaseAuthException catch (e) {
       if (mounted) _notify('Sign up failed', signUpError(e), bad: true);
     } finally {

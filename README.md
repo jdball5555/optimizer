@@ -60,7 +60,7 @@ This repository is public as part of my portfolio, so everything that connects t
 
 - **No credentials or project connection.** The Firebase config (`lib/firebase_options.dart`, `web/firebase-messaging-sw.js`), the project alias and the journal's encryption key are git-ignored. Each has a `.example` template with placeholders.
 - **Server-side secrets** (the Google OAuth client secret and API keys) live in Firebase's secret store, never in the code.
-- **Data access.** Every user's data sits under their own user ID and the Firestore rules let only that user read it (`firestore.rules.example`). Shared data, like invitations and Google sign-ins, is server-only, written by Cloud Functions that act only for the signed-in caller.
+- **Data access.** Every user's data sits under their own user ID and the Firestore rules let only that user read it (`firestore.rules`, the project's live rules, which also cover the other Axis apps sharing it). Shared data, like invitations and Google sign-ins, is server-only, written by Cloud Functions that act only for the signed-in caller. Anything matched by email needs a verified one, and premium beta's features are checked on the server, not only hidden in the app.
 - **Test data is made up.** Names, places and amounts in the tests and previews are fictional.
 
 ## Running locally
@@ -68,7 +68,7 @@ This repository is public as part of my portfolio, so everything that connects t
 1. Install the [Flutter SDK](https://docs.flutter.dev/get-started/install) and the [Firebase CLI](https://firebase.google.com/docs/cli).
 2. Create a Firebase project, then run `flutterfire configure` (or copy `lib/firebase_options.example.dart` to `lib/firebase_options.dart` and fill it in).
 3. Copy `web/firebase-messaging-sw.example.js` to `web/firebase-messaging-sw.js` and `lib/journal/journal_key.example.dart` to `lib/journal/journal_key.dart`, and fill them in.
-4. Copy `firestore.rules.example` to `firestore.rules` and deploy it.
+4. Deploy `firestore.rules` (`firebase deploy --only firestore:rules`). It's the whole project's rules, so deploy it only from a copy that matches the live ones.
 5. Run `flutter pub get`, then `flutter run -d chrome --web-port 5050`. Google sign-in expects port 5050.
 6. Functions: `cd functions && npm install`, put `GOOGLE_OAUTH_CLIENT_ID=…` in `functions/.env`, set the `GOOGLE_OAUTH_CLIENT_SECRET` secret, then `firebase deploy --only functions`.
 

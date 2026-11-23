@@ -21,6 +21,7 @@
 const crypto = require("crypto");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { requirePremiumBeta } = require("./premium");
 const logger = require("firebase-functions/logger");
 const { notifyUser } = require("./notify");
 const { ROLES, roleOnItem, tripCopyFor, cleanSharedItem, cleanTripFields } = require("./trip_share_core");
@@ -43,7 +44,19 @@ function requireUser(request) {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
   const email = lower(request.auth.token.email);
   if (!email) throw new HttpsError("failed-precondition", "Your account has no email address.");
-  return { uid: request.auth.uid, email };
+  // Invitations, shared events and trips are matched by email: only a proven
+  // one counts (anyone can make an account with someone else's address).
+  // Google sign-ins are proven already.
+  return { uid: request.auth.uid, email, verified: request.auth.token.email_verified === true };
+}
+
+/** Your email, if it's proven: the only kind that may match an invitation. */
+const verifiedEmail = (me) => (me.verified ? me.email : null);
+
+function requireVerified(me) {
+  if (!me.verified) {
+    throw new HttpsError("failed-precondition", "Verify your email address first: open the link we emailed you, then try again.");
+  }
 }
 
 async function nameOf(uid, fallback) {
@@ -262,6 +275,8 @@ const slow = { timeoutSeconds: 120 };
 exports.registerMe = onCall(async (request) => {
   const me = requireUser(request);
   const name = String((request.data && request.data.name) || request.auth.token.name || me.email.split("@")[0]).trim().slice(0, 80);
+  // Not until the email is proven: no listing under it, no invitations to it.
+  if (!me.verified) return { name, verified: false };
   await people.doc(me.uid).set({ email: me.email, name, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   const waiting = await invites.where("to", "==", me.email).where("toUid", "==", null).get();
   for (const d of waiting.docs) {
@@ -270,11 +285,12 @@ exports.registerMe = onCall(async (request) => {
     if (d.data().groupId) await refreshGroup(d.data().groupId);
     if (d.data().tripShareId) await refreshTrip(d.data().tripShareId);
   }
-  return { name };
+  return { name, verified: true };
 });
 
 /** Which of [emails] are on Optimizer. */
 exports.findPeople = onCall(async (request) => {
+  requirePremiumBeta(request);
   const me = requireUser(request);
   const emails = cleanEmails(request.data && request.data.emails, me).slice(0, 50);
   return {
@@ -293,6 +309,7 @@ exports.findPeople = onCall(async (request) => {
  * an event with guests; an empty list cancels every invitation).
  */
 exports.setEventGuests = onCall(slow, async (request) => {
+  requirePremiumBeta(request);
   const me = await whoAmI(request);
   const d = request.data || {};
   const eventKey = String(d.eventKey || "");
@@ -339,7 +356,7 @@ exports.respondInvite = onCall(async (request) => {
   const doc = await invites.doc(id).get();
   if (!doc.exists) throw new HttpsError("not-found", "That invitation is gone. It may have been cancelled.");
   const i = doc.data();
-  if (i.toUid !== me.uid && i.to !== me.email) throw new HttpsError("permission-denied", "That invitation isn't yours.");
+  if (i.toUid !== me.uid && i.to !== verifiedEmail(me)) throw new HttpsError("permission-denied", "That invitation isn't yours.");
   await doc.ref.update({ status: accept ? "accepted" : "declined", toUid: me.uid, respondedAt: FieldValue.serverTimestamp() });
   let what = "";
   if (i.eventId) {
@@ -363,6 +380,7 @@ exports.respondInvite = onCall(async (request) => {
 
 /** Makes a group (no [groupId]) or renames yours. */
 exports.saveGroup = onCall(async (request) => {
+  requirePremiumBeta(request);
   const me = await whoAmI(request);
   const name = String((request.data && request.data.name) || "").trim().slice(0, 80);
   if (!name) throw new HttpsError("invalid-argument", "Give the group a name.");
@@ -380,6 +398,7 @@ exports.saveGroup = onCall(async (request) => {
 });
 
 exports.inviteToGroup = onCall(slow, async (request) => {
+  requirePremiumBeta(request);
   const me = await whoAmI(request);
   const id = String((request.data && request.data.groupId) || "");
   const g = (await groupsCol.doc(id).get()).data();
@@ -398,13 +417,14 @@ exports.removeFromGroup = onCall(async (request) => {
   const email = lower(request.data && request.data.email) || me.email;
   const g = (await groupsCol.doc(id).get()).data();
   if (!g) throw new HttpsError("not-found", "That group is gone.");
-  if (g.owner !== me.uid && email !== me.email) throw new HttpsError("permission-denied", "Only the group's owner can remove people.");
+  if (g.owner !== me.uid && email !== verifiedEmail(me)) throw new HttpsError("permission-denied", "Only the group's owner can remove people.");
   for (const d of (await invites.where("groupId", "==", id).where("to", "==", email).get()).docs) await dropInvite(d);
   await refreshGroup(id);
   return { removed: email };
 });
 
 exports.deleteGroup = onCall(async (request) => {
+  requirePremiumBeta(request);
   const me = requireUser(request);
   const id = String((request.data && request.data.groupId) || "");
   const g = (await groupsCol.doc(id).get()).data();
@@ -430,6 +450,7 @@ const cleanTripId = (v) => {
  * for you to send them. An empty list stops sharing it.
  */
 exports.setTripPeople = onCall(slow, async (request) => {
+  requirePremiumBeta(request);
   const me = await whoAmI(request);
   const d = request.data || {};
   const tripId = cleanTripId(d.tripId);
@@ -471,6 +492,7 @@ exports.setTripPeople = onCall(slow, async (request) => {
 
 /** Brings everyone's copy up to date after you change your trip. */
 exports.syncTripShare = onCall(slow, async (request) => {
+  requirePremiumBeta(request);
   const me = requireUser(request);
   const shareId = shareIdFor(me.uid, cleanTripId(request.data && request.data.tripId));
   const share = (await sharesCol.doc(shareId).get()).data();
@@ -483,6 +505,7 @@ async function sharedWithMe(me, shareId) {
   const id = String(shareId || "");
   const share = /^[a-f0-9]{24}$/.test(id) ? (await sharesCol.doc(id).get()).data() : null;
   if (!share) throw new HttpsError("not-found", "That trip isn't shared anymore.");
+  requireVerified(me);
   const mineInvite = (await invites.where("tripShareId", "==", id).where("to", "==", me.email).limit(1).get()).docs[0];
   if (!mineInvite) throw new HttpsError("permission-denied", "That trip isn't shared with you.");
   const invite = mineInvite.data();
@@ -568,12 +591,20 @@ exports.inviteInfo = onCall(async (request) => {
   return { email: i.to, fromName: i.fromName, what, kind: i.kind };
 });
 
-/** After signing up from an invitation link: the invitation is yours (whatever email you used). */
+/**
+ * After signing up from an invitation link: the invitation is yours, if your
+ * proven email is the one it was sent to (so a forwarded link can't be
+ * claimed by someone else).
+ */
 exports.claimInvite = onCall(async (request) => {
   const me = requireUser(request);
+  requireVerified(me);
   const doc = await byToken(request.data && request.data.token);
   if (!doc) throw new HttpsError("not-found", "This invitation link doesn't work anymore.");
-  await doc.ref.update({ to: me.email, toUid: me.uid });
+  if (lower(doc.data().to) !== me.email) {
+    throw new HttpsError("permission-denied", "This invitation was sent to another email address. Sign in with that one to accept it.");
+  }
+  await doc.ref.update({ toUid: me.uid });
   const i = doc.data();
   if (i.eventId) await refreshEvent(i.eventId);
   if (i.groupId) await refreshGroup(i.groupId);

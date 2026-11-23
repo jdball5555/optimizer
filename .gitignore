@@ -74,4 +74,3 @@ lib/firebase_options.dart
 web/firebase-messaging-sw.js
 lib/journal/journal_key.dart
 .firebaserc
-firestore.rules
