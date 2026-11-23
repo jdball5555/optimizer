@@ -32,9 +32,13 @@ const _tabular = [FontFeature.tabularFigures()];
 /// whichever device started it. At start-up the rest of the app stays hidden
 /// until it's known whether one is going (a few seconds at most, if offline).
 class FocusGate extends StatefulWidget {
-  const FocusGate({super.key, required this.store, required this.open, required this.onClose, required this.child});
+  const FocusGate({super.key, required this.store, required this.open, required this.onClose, required this.child, this.enabled = true});
 
   final FocusStore store;
+
+  /// Focus is premium beta's: without it, never shown, and nothing waits on
+  /// whether a session is going.
+  final bool enabled;
 
   /// Opened from Home, with no session going yet.
   final bool open;
@@ -75,10 +79,12 @@ class _FocusGateState extends State<FocusGate> {
 
   @override
   Widget build(BuildContext context) {
-    final show = widget.open || widget.store.active != null;
+    final on = widget.enabled;
+    final show = on && (widget.open || widget.store.active != null);
+    final waiting = on && !_known;
     return Stack(fit: StackFit.expand, children: [
-      ExcludeSemantics(excluding: show || !_known, child: widget.child),
-      if (show) FocusPage(store: widget.store, onClose: widget.onClose) else if (!_known) const ColoredBox(color: AppColors.background),
+      ExcludeSemantics(excluding: show || waiting, child: widget.child),
+      if (show) FocusPage(store: widget.store, onClose: widget.onClose) else if (waiting) const ColoredBox(color: AppColors.background),
     ]);
   }
 }

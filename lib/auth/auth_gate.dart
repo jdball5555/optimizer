@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../shell/app_shell.dart';
 import 'login_page.dart';
+import 'profile.dart';
 
-/// True while the sign-in page checks a Google sign-in (whether it's a new
-/// account, made without an invitation), so the app doesn't open meanwhile.
+/// True while the sign-in page finishes making an account (setting its
+/// name), so the app doesn't open before it knows who you are.
 final signInHold = ValueNotifier(false);
 
 class AuthGate extends StatefulWidget {
@@ -23,20 +24,22 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: signInHold,
-      builder: (context, hold, _) => StreamBuilder<User?>(
-      stream: _user,
-      initialData: FirebaseAuth.instance.currentUser,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && snap.data == null) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        final user = snap.data;
-        if (user == null || hold) return const LoginPage();
-        // Keyed by uid so switching accounts rebuilds everything cleanly.
-        return AppShell(key: ValueKey(user.uid), user: user);
-      },
+    return ListenableBuilder(
+      listenable: Listenable.merge([signInHold, profileChanged]),
+      builder: (context, _) => StreamBuilder<User?>(
+        stream: _user,
+        initialData: FirebaseAuth.instance.currentUser,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && snap.data == null) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+          // The freshest copy of the account: the stream's still has the name
+          // it had at sign-in (none, for an account just made).
+          final user = snap.data == null ? null : (FirebaseAuth.instance.currentUser ?? snap.data);
+          if (user == null || signInHold.value) return const LoginPage();
+          // Keyed by uid so switching accounts rebuilds everything cleanly.
+          return AppShell(key: ValueKey(user.uid), user: user);
+        },
       ),
     );
   }

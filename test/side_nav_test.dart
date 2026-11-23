@@ -42,6 +42,57 @@ void main() {
     expect(find.descendant(of: find.byType(SideNav), matching: find.byType(RawScrollbar)), findsNothing);
   }, variant: const TargetPlatformVariant({TargetPlatform.macOS}));
 
+  testWidgets('on a small screen the ☰ slides the same side bar in over the app, always open', (t) async {
+    // Folded on the website: the drawer is open anyway.
+    SharedPreferences.setMockInitialValues({'optimizer.sideNavExpanded': false});
+    t.view.physicalSize = const Size(390, 844);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final key = GlobalKey<ScaffoldState>();
+    var page = 0;
+    await t.pumpWidget(StatefulBuilder(
+      builder: (context, setState) => MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          key: key,
+          drawer: Drawer(
+            width: SideNav.expandedWidth,
+            child: SideNav(
+              inDrawer: true,
+              items: const [
+                (icon: Icons.check_circle_outline, selected: Icons.check_circle, label: 'To-dos'),
+                (icon: Icons.people_outline, selected: Icons.people, label: 'People'),
+              ],
+              selected: page,
+              onSelected: (i) {
+                key.currentState!.closeDrawer();
+                setState(() => page = i);
+              },
+              account: (expanded) => SideNavAccount(name: 'D', email: 'd@example.com', expanded: expanded, onSettings: () {}, onSignOut: () {}),
+            ),
+          ),
+          body: Align(
+            alignment: Alignment.topRight,
+            child: IconButton(tooltip: 'Menu', icon: const Icon(Icons.menu), onPressed: () => key.currentState!.openDrawer()),
+          ),
+        ),
+      ),
+    ));
+    await t.pumpAndSettle();
+    expect(find.byType(SideNav), findsNothing);
+    await t.tap(find.byTooltip('Menu'));
+    await t.pumpAndSettle();
+    expect(t.getSize(find.byType(SideNav)).width, SideNav.expandedWidth);
+    expect(find.text('Optimizer'), findsOneWidget);
+    expect(find.byTooltip('Collapse'), findsNothing);
+    expect(find.byTooltip('Expand'), findsNothing);
+    await t.tap(find.text('People'));
+    await t.pumpAndSettle();
+    expect(page, 1);
+    expect(find.byType(SideNav), findsNothing, reason: 'picking a page closes it');
+    expect(t.takeException(), isNull);
+  });
+
   group('folding', () {
     Future<void> bar(WidgetTester t, {bool expanded = true}) async {
       SharedPreferences.setMockInitialValues({'optimizer.sideNavExpanded': expanded});
@@ -118,5 +169,34 @@ void main() {
       expect(width(t), SideNav.expandedWidth);
       expect(t.takeException(), isNull);
     });
+  });
+
+  testWidgets('Feedback sits at the bottom of the side bar, above your account', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    t.view.physicalSize = const Size(1200, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    var opened = 0;
+    await t.pumpWidget(MaterialApp(
+      theme: buildTheme(),
+      home: Scaffold(
+        body: Row(children: [
+          SideNav(
+            items: const [(icon: Icons.check_circle_outline, selected: Icons.check_circle, label: 'To-dos')],
+            selected: 0,
+            onSelected: (_) {},
+            onFeedback: () => opened++,
+            account: (expanded) => SideNavAccount(name: 'Dana', email: 'd@example.com', expanded: expanded, onSettings: () {}, onSignOut: () {}),
+          ),
+          const Expanded(child: SizedBox()),
+        ]),
+      ),
+    ));
+    await t.pumpAndSettle();
+    final feedback = t.getTopLeft(find.text('Feedback'));
+    expect(feedback.dy, greaterThan(t.getTopLeft(find.text('To-dos')).dy));
+    expect(feedback.dy, lessThan(t.getTopLeft(find.text('Dana')).dy));
+    await t.tap(find.text('Feedback'));
+    expect(opened, 1);
   });
 }

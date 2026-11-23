@@ -43,6 +43,9 @@ class CalendarStore {
   /// happens to it in Google.
   Future<void> saveKeepPast(bool on) => _save({'keepPast': on});
 
+  /// The To-dos page's choices: todoMatrix, todoMainList.
+  Future<void> saveTodoSettings(Map<String, dynamic> fields) => _save(fields);
+
   /// Off stops the server checking Google every minute (Sync still works).
   Future<void> saveAutoSync(bool on) => _save({'autoSync': on});
 

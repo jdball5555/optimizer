@@ -171,11 +171,27 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
   /// To-dos you added yourself (axisCalendar/{uid}/todos).
   List<Todo> manualTodos = [];
 
+  /// Where each Canvas to-do sits in the urgent / important matrix.
+  final Map<String, Quadrant> _quadrants = {};
+
+  /// The lists you made, in order (axisCalendar/{uid}/todoLists). The main
+  /// list ([mainList]) isn't one of them.
+  List<TodoList> todoLists = [];
+
+  /// The list a to-do goes in unless you pick another. Renamable (saved in
+  /// settings as todoMainList).
+  TodoList get mainList => TodoList.main(_mainListName.isEmpty ? 'To-dos' : _mainListName);
+  String _mainListName = '';
+
+  /// The To-dos page sorts what's left into urgent / important (saved in
+  /// settings as todoMatrix, so the calendar shows the same on every device).
+  bool todoMatrix = false;
+
   /// The to-do list: Canvas items from classes that are switched on, and
   /// your own.
   List<Todo> get todos => [
         for (final t in canvasTasks)
-          if (isVisible(t.calendar)) Todo.canvas(t, done: doneTasks.contains(t.id), doneAt: _doneAt[t.id]),
+          if (isVisible(t.calendar)) Todo.canvas(t, done: doneTasks.contains(t.id), doneAt: _doneAt[t.id], quadrant: _quadrants[t.id]),
         ...manualTodos,
       ];
   QuerySnapshot<Map<String, dynamic>>? _canvasItems;
@@ -283,10 +299,20 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
   void _listenCanvas() {
     _listenPeople();
     _listenOwn();
+    var firstFeeds = true;
     _subs.add(_root.collection('canvasFeeds').snapshots().listen((s) {
       canvasFeeds
         ..clear()
         ..addAll([for (final d in s.docs) CanvasFeed(d.id, d.data())]..sort((a, b) => a.name.compareTo(b.name)));
+      // Linked before groups: each gets a group of its own, once. (Only
+      // those already there on opening: one linked now is put in a group by
+      // whoever linked it.)
+      if (firstFeeds && !s.metadata.isFromCache) {
+        firstFeeds = false;
+        for (final f in canvasFeeds.where((f) => f.todoList == null)) {
+          _giveOwnGroup(f.id, f.name, id: 'canvas_${f.id}').catchError((_) {});
+        }
+      }
       canvasError = null;
       _rebuildCanvas();
     }, onError: _canvasFailed));
@@ -318,9 +344,14 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
       manualTodos = [for (final d in s.docs) Todo.manual(d.id, d.data())];
       notifyListeners();
     }, onError: _canvasFailed));
+    _subs.add(_root.collection('todoLists').snapshots().listen((s) {
+      todoLists = [for (final d in s.docs) TodoList(d.id, d.data())]..sort((a, b) => a.order.compareTo(b.order));
+      notifyListeners();
+    }, onError: _canvasFailed));
     _subs.add(_root.collection('taskStatus').snapshots().listen((s) {
       doneTasks.clear();
       _doneAt.clear();
+      _quadrants.clear();
       _edits.clear();
       for (final d in s.docs) {
         final data = d.data();
@@ -328,6 +359,7 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
           doneTasks.add(d.id);
           _doneAt[d.id] = asDate(data['doneAt']);
         }
+        if (Quadrant.parse(data['quadrant']) case final q?) _quadrants[d.id] = q;
         if (data['override'] is Map && data['overrideBase'] is Map) {
           _edits[d.id] = {
             'override': Map<String, dynamic>.from(data['override'] as Map),
@@ -909,6 +941,7 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
       'color': feed == null ? null : colorToHex(feed.calendarFor(course).color),
       'url': canvas['url'],
       'fromCanvas': id,
+      if (_quadrants[id] case final q?) 'quadrant': q.key,
       'createdAt': FieldValue.serverTimestamp(),
     }).catchError((_) {});
     _root.collection('taskStatus').doc(id).set({
@@ -961,7 +994,10 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
 
   /// Adds a Canvas "Calendar Feed" link; the server checks it, reads it and
   /// keeps it up to date from then on. Returns what was added.
-  Future<String> addCanvasFeed(String url, {String name = '', bool notify = true}) async {
+  ///
+  /// [group]: the To-dos group its items go in; null gives it a group of its
+  /// own, called [name] (or what Canvas calls it).
+  Future<String> addCanvasFeed(String url, {String name = '', bool notify = true, String? group}) async {
     try {
       final r = await FirebaseFunctions.instance.httpsCallable('addCanvasFeed').call({
         'url': url,
@@ -970,6 +1006,10 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
         'notifyChanges': notify,
       });
       final d = r.data as Map;
+      final id = '${d['id'] ?? ''}';
+      if (id.isNotEmpty) {
+        group == null ? await _giveOwnGroup(id, name.isEmpty ? '${d['name'] ?? 'School'}' : name) : await _putFeedIn(id, group);
+      }
       return 'Added ${d['name']} · ${d['count']} items';
     } catch (e) {
       throw Exception(_callError(e));
@@ -984,14 +1024,54 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
     }
   }
 
-  /// Checks now instead of waiting for the next minute. Returns any problems.
+  /// Whether Canvas is being checked right now (from [refreshCanvas]).
+  bool canvasChecking = false;
+
+  /// After five refreshes in five minutes, when the server takes another.
+  DateTime? canvasRetryAt;
+
+  /// When Canvas was last checked: the latest of the feeds' checks.
+  DateTime? get canvasCheckedAt {
+    DateTime? last;
+    for (final f in canvasFeeds) {
+      final c = f.lastChecked;
+      if (c != null && (last == null || c.isAfter(last))) last = c;
+    }
+    return last;
+  }
+
+  /// Checks Canvas now. With premium beta the server also checks every
+  /// minute; without it, this (on opening and the refresh button) is the only
+  /// check, at most five in five minutes. Returns any problems.
   Future<List<String>> refreshCanvas({CanvasFeed? only}) async {
+    canvasChecking = true;
+    notifyListeners();
     try {
       final r = await FirebaseFunctions.instance.httpsCallable('refreshCanvasFeeds').call({if (only != null) 'id': only.id});
+      canvasRetryAt = null;
       return [for (final e in ((r.data as Map)['errors'] as List? ?? const [])) '$e'];
     } catch (e) {
+      if (e is FirebaseFunctionsException && e.code == 'resource-exhausted') {
+        final at = (e.details is Map) ? (e.details as Map)['retryAt'] : null;
+        canvasRetryAt = at is num ? DateTime.fromMillisecondsSinceEpoch(at.toInt()) : DateTime.now().add(const Duration(minutes: 5));
+      }
       throw Exception(_callError(e));
+    } finally {
+      canvasChecking = false;
+      notifyListeners();
     }
+  }
+
+  /// On opening the app without premium beta: checks Canvas unless it was
+  /// checked in the last [fresh] (so reloading doesn't use up refreshes).
+  /// Quiet: a problem shows on the feed, not as an error here.
+  Future<void> refreshCanvasIfStale({Duration fresh = const Duration(minutes: 5)}) async {
+    final last = canvasCheckedAt;
+    if (canvasFeeds.isEmpty || canvasChecking) return;
+    if (last != null && DateTime.now().difference(last) < fresh) return;
+    try {
+      await refreshCanvas();
+    } catch (_) {}
   }
 
   /// Changes a to-do's title and date. For a Canvas item this stops Canvas
@@ -1044,12 +1124,14 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
     }, SetOptions(merge: true));
   }
 
-  Future<void> addTodo(String title, {DateTime? due, bool allDay = true}) async {
+  Future<void> addTodo(String title, {DateTime? due, bool allDay = true, String? listId, Quadrant? quadrant}) async {
     final ref = await _root.collection('todos').add({
       'title': title,
       'due': due == null ? null : Timestamp.fromDate(due),
       'allDay': allDay,
       'done': false,
+      if (listId != null && listId != TodoList.mainListId) 'listId': listId,
+      if (quadrant != null) 'quadrant': quadrant.key,
       'createdAt': FieldValue.serverTimestamp(),
     });
     remember('Added “$title”', () => ref.delete());
@@ -1091,6 +1173,109 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
       'due': Timestamp.fromDate(t.due),
       'source': 'canvas',
     }, SetOptions(merge: true));
+  }
+
+  // ---------------------------------------------------------------- lists and the matrix
+
+  /// Puts a to-do in a box of the urgent / important matrix, or (null) back
+  /// with the ones not sorted yet.
+  Future<void> setTodoQuadrant(Todo t, Quadrant? q) {
+    if (t.quadrant == q) return Future.value();
+    remember(q == null ? 'Unsorted “${t.title}”' : 'Moved “${t.title}” to ${q.title}', () => setTodoQuadrant(_now(t), t.quadrant));
+    if (t.canvas != null) {
+      // Shown straight away; Firestore confirms it a moment later.
+      q == null ? _quadrants.remove(t.id) : _quadrants[t.id] = q;
+      notifyListeners();
+      return _root.collection('taskStatus').doc(t.id).set({'quadrant': q?.key ?? FieldValue.delete()}, SetOptions(merge: true));
+    }
+    return _root.collection('todos').doc(t.id).update({'quadrant': q?.key ?? FieldValue.delete()});
+  }
+
+  /// Moves one of your own to-dos to another list.
+  Future<void> moveTodo(Todo t, String listId) {
+    if (t.isCanvas || (t.listId ?? TodoList.mainListId) == listId) return Future.value();
+    final before = t.listId ?? TodoList.mainListId;
+    remember('Moved “${t.title}”', () => moveTodo(_now(t), before));
+    return _root.collection('todos').doc(t.id).update({'listId': listId == TodoList.mainListId ? FieldValue.delete() : listId});
+  }
+
+  /// [t] as it is now (an undo may run long after [t] was read).
+  Todo _now(Todo t) => todos.where((x) => x.id == t.id).firstOrNull ?? t;
+
+  Future<void> addTodoList(String name) async {
+    final order = todoLists.isEmpty ? 0.0 : todoLists.last.order + 1;
+    final ref = await _root.collection('todoLists').add({'name': name, 'order': order, 'createdAt': FieldValue.serverTimestamp()});
+    remember('Added the group “$name”', () => ref.delete());
+  }
+
+  Future<void> renameTodoList(TodoList l, String name) {
+    if (l.isMain) {
+      final before = _mainListName;
+      remember('Renamed “${l.name}”', () => _saveMainListName(before));
+      return _saveMainListName(name);
+    }
+    remember('Renamed “${l.name}”', () => _root.collection('todoLists').doc(l.id).update({'name': l.name}));
+    return _root.collection('todoLists').doc(l.id).update({'name': name});
+  }
+
+  Future<void> _saveMainListName(String name) {
+    _mainListName = name;
+    notifyListeners();
+    return store.saveTodoSettings({'todoMainList': name});
+  }
+
+  /// A new group for a Canvas calendar's items, after your other groups.
+  Future<void> _giveOwnGroup(String feedId, String name, {String? id}) async {
+    final order = todoLists.isEmpty ? 0.0 : todoLists.last.order + 1;
+    final list = id == null ? _root.collection('todoLists').doc() : _root.collection('todoLists').doc(id);
+    await list.set({'name': name, 'order': order, 'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+    await _putFeedIn(feedId, list.id);
+  }
+
+  Future<void> _putFeedIn(String feedId, String group) => _root.collection('canvasFeeds').doc(feedId).update({'todoList': group});
+
+  /// The Canvas calendars whose items are in group [listId].
+  List<CanvasFeed> canvasFeedsIn(String listId) {
+    final ids = {TodoList.mainListId, for (final l in todoLists) l.id};
+    return [
+      for (final f in canvasFeeds)
+        if ((ids.contains(f.todoList) ? f.todoList : TodoList.mainListId) == listId) f
+    ];
+  }
+
+  /// Deletes a group you made and your to-dos in it. A Canvas calendar in it
+  /// moves to the main group.
+  Future<void> deleteTodoList(TodoList l) async {
+    if (l.isMain) return;
+    final list = _root.collection('todoLists').doc(l.id);
+    final listData = (await list.get()).data();
+    final inIt = (await _root.collection('todos').where('listId', isEqualTo: l.id).get()).docs;
+    final feeds = canvasFeedsIn(l.id);
+    final batch = FirebaseFirestore.instance.batch()..delete(list);
+    for (final d in inIt) {
+      batch.delete(d.reference);
+    }
+    for (final f in feeds) {
+      batch.update(_root.collection('canvasFeeds').doc(f.id), {'todoList': TodoList.mainListId});
+    }
+    await batch.commit();
+    remember('Deleted the group “${l.name}”', () async {
+      final back = FirebaseFirestore.instance.batch();
+      if (listData != null) back.set(list, listData);
+      for (final d in inIt) {
+        back.set(d.reference, d.data());
+      }
+      for (final f in feeds) {
+        back.update(_root.collection('canvasFeeds').doc(f.id), {'todoList': l.id});
+      }
+      await back.commit();
+    });
+  }
+
+  Future<void> setTodoMatrix(bool on) {
+    todoMatrix = on;
+    notifyListeners();
+    return store.saveTodoSettings({'todoMatrix': on});
   }
 
   Future<void> setCanvasNotify(CanvasFeed f, bool on) => _root.collection('canvasFeeds').doc(f.id).update({'notifyNew': on, 'notifyChanges': on});
@@ -1188,6 +1373,10 @@ class CalendarService extends ChangeNotifier with DisposeSafe {
         ..addAll((d['hiddenCalendars'] as List).whereType<String>());
     }
     autoSync = d['autoSync'] != false;
+    if (!s.metadata.hasPendingWrites) {
+      todoMatrix = d['todoMatrix'] == true;
+      _mainListName = '${d['todoMainList'] ?? ''}';
+    }
     keepPast = d['keepPast'] == true;
     pastPending = (d['pastPending'] as List? ?? const []).whereType<String>().toList();
     final times = [

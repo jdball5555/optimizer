@@ -92,7 +92,8 @@ void main() {
       const Size(412, 915)));
 
   group('the gate', () {
-    Future<void> pumpGate(WidgetTester tester, FocusStore store, {bool open = false, VoidCallback? onClose, Size size = const Size(1400, 900)}) async {
+    Future<void> pumpGate(WidgetTester tester, FocusStore store,
+        {bool open = false, VoidCallback? onClose, Size size = const Size(1400, 900), bool enabled = true}) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -101,6 +102,7 @@ void main() {
         home: FocusGate(
           store: store,
           open: open,
+          enabled: enabled,
           onClose: onClose ?? () {},
           child: const Scaffold(body: Text('the rest of the app')),
         ),
@@ -120,6 +122,12 @@ void main() {
       await pumpGate(tester, EndingStore([going]));
       expect(find.text('Pause'), findsOneWidget);
       expect(find.text('the rest of the app').hitTestable(), findsNothing);
+    });
+
+    testWidgets('without premium beta there’s no focus: a session going elsewhere doesn’t take over', (tester) async {
+      await pumpGate(tester, EndingStore([going]), open: true, enabled: false);
+      expect(find.text('Pause'), findsNothing);
+      expect(find.text('the rest of the app').hitTestable(), findsOneWidget);
     });
 
     testWidgets('with no session, the app opens normally', (tester) async {

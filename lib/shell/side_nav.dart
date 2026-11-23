@@ -20,9 +20,29 @@ typedef SideNavItem = ({IconData icon, IconData selected, String label});
 /// words fade out). Softer than Team's: every page sits in a rounded bubble that lights
 /// up under the mouse.
 class SideNav extends StatefulWidget {
-  const SideNav({super.key, required this.items, required this.selected, required this.onSelected, required this.account});
+  const SideNav(
+      {super.key,
+      required this.items,
+      required this.selected,
+      required this.onSelected,
+      required this.account,
+      this.linesBefore = const {},
+      this.onFeedback,
+      this.inDrawer = false});
+
+  /// Opens Feedback, which sits at the bottom of the bar just above your
+  /// account, as in Axis Scorecards and Axis Team. Null hides it.
+  final VoidCallback? onFeedback;
+
+  /// Slid in over the app on a small screen: always open, no fold arrow
+  /// (just the version), and no edge line (the drawer has its own edge).
+  final bool inDrawer;
 
   final List<SideNavItem> items;
+
+  /// A line goes above each of these pages (by position in [items]), as in
+  /// Axis Team, to set a group apart; [items].length puts one under the last.
+  final Set<int> linesBefore;
   final int selected;
   final ValueChanged<int> onSelected;
 
@@ -38,19 +58,21 @@ class SideNav extends StatefulWidget {
 
 class _SideNavState extends State<SideNav> {
   static const _key = 'optimizer.sideNavExpanded';
-  bool _expanded = true;
+  bool _folded = false;
+
+  bool get _expanded => widget.inDrawer || !_folded;
 
   @override
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((p) {
       final v = p.getBool(_key);
-      if (v != null && mounted) setState(() => _expanded = v);
+      if (v != null && mounted) setState(() => _folded = !v);
     }, onError: (_) {});
   }
 
   void _toggle() {
-    setState(() => _expanded = !_expanded);
+    setState(() => _folded = !_folded);
     SharedPreferences.getInstance().then((p) => p.setBool(_key, _expanded), onError: (_) => false);
   }
 
@@ -70,9 +92,9 @@ class _SideNavState extends State<SideNav> {
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
       width: _expanded ? SideNav.expandedWidth : SideNav.collapsedWidth,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
-        border: Border(right: BorderSide(color: AppColors.border)),
+        border: widget.inDrawer ? null : const Border(right: BorderSide(color: AppColors.border)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
@@ -101,14 +123,26 @@ class _SideNavState extends State<SideNav> {
                       ]),
                     )),
                     const SizedBox(height: 18),
-                    for (var i = 0; i < widget.items.length; i++)
-                      _NavBubble(
-                        item: widget.items[i],
-                        selected: i == widget.selected,
-                        expanded: _expanded,
-                        onTap: () => widget.onSelected(i),
-                      ),
+                    for (var i = 0; i <= widget.items.length; i++) ...[
+                      if (widget.linesBefore.contains(i)) const _Line(),
+                      if (i < widget.items.length)
+                        _NavBubble(
+                          item: widget.items[i],
+                          selected: i == widget.selected,
+                          expanded: _expanded,
+                          onTap: () => widget.onSelected(i),
+                        ),
+                    ],
                     const Spacer(),
+                    if (widget.onFeedback != null) ...[
+                      _NavBubble(
+                        item: (icon: Icons.feedback_outlined, selected: Icons.feedback, label: 'Feedback'),
+                        selected: false,
+                        expanded: _expanded,
+                        onTap: widget.onFeedback!,
+                      ),
+                      const SizedBox(height: 3),
+                    ],
                     widget.account(_expanded),
                     const SizedBox(height: 8),
                   ]),
@@ -117,38 +151,55 @@ class _SideNavState extends State<SideNav> {
             ),
           ),
         ),
-        // The version and the fold arrow: one button, the whole rectangle.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-          child: _Bubbly(
-            onTap: _toggle,
-            tooltip: _expanded ? 'Collapse' : 'Expand',
-            child: SizedBox(
-              height: 44,
-              width: double.infinity,
-              child: Stack(children: [
-                Positioned(
-                  left: 16,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(
-                      child: _fade(const Text('v$appVersion', softWrap: false, style: TextStyle(color: AppColors.secondaryText, fontSize: 12)))),
-                ),
-                // Centered in the bubble when folded.
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: (_foldedInside - 24) / 2),
-                    child: Icon(_expanded ? Icons.keyboard_arrow_left : Icons.keyboard_arrow_right, size: 24, color: AppColors.secondaryText),
+        if (widget.inDrawer)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(26, 6, 10, 20),
+            child: Text('v$appVersion', style: TextStyle(color: AppColors.secondaryText, fontSize: 12)),
+          )
+        else
+          // The version and the fold arrow: one button, the whole rectangle.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+            child: _Bubbly(
+              onTap: _toggle,
+              tooltip: _expanded ? 'Collapse' : 'Expand',
+              child: SizedBox(
+                height: 44,
+                width: double.infinity,
+                child: Stack(children: [
+                  Positioned(
+                    left: 16,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                        child: _fade(const Text('v$appVersion', softWrap: false, style: TextStyle(color: AppColors.secondaryText, fontSize: 12)))),
                   ),
-                ),
-              ]),
+                  // Centered in the bubble when folded.
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: (_foldedInside - 24) / 2),
+                      child: Icon(_expanded ? Icons.keyboard_arrow_left : Icons.keyboard_arrow_right, size: 24, color: AppColors.secondaryText),
+                    ),
+                  ),
+                ]),
+              ),
             ),
           ),
-        ),
       ]),
     );
   }
+}
+
+/// The line between groups of pages, within the bubbles' margins.
+class _Line extends StatelessWidget {
+  const _Line();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Divider(height: 1, thickness: 1, color: AppColors.border),
+      );
 }
 
 /// A page in the bar: a rounded bubble, softly lit under the mouse and

@@ -57,6 +57,19 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/version.json",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "https://axisoptic.com"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ]
   }

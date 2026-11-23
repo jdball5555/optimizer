@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ai/ai_service.dart';
+import '../auth/profile.dart';
 import '../calendar/calendar_page.dart';
 import '../calendar/calendar_service.dart';
 import '../networth/net_worth_page.dart';
@@ -61,102 +62,110 @@ class SettingsPage extends StatelessWidget {
                 constraints: const BoxConstraints(maxWidth: 640),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   if (embedded) Padding(padding: EdgeInsets.only(bottom: PageSpace.gap(context) - 20), child: const PageHeader(title: 'Settings')),
-                  _section('Notifications'),
-                  Tile(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Column(children: [
-                      SwitchListTile(
-                        value: notifications.enabled,
-                        onChanged: NotificationService.supported ? (on) => _setDevice(context, on) : null,
-                        title: const Text('Notifications on this device'),
-                        subtitle: Text(_deviceStatus(), style: const TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
-                      ),
-                      if (notifications.enabled)
-                        ListTile(
-                          leading: const Icon(Icons.notifications_outlined),
-                          title: const Text('Send a test notification'),
-                          subtitle: const Text('Arrives in 10 seconds: lock your phone or leave the app to see it like a real one',
-                              style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
-                          onTap: () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            messenger.showSnackBar(const SnackBar(content: Text('Sending in 10 seconds…')));
-                            try {
-                              final sent = await notifications.sendTest(delaySeconds: 10);
-                              messenger.showSnackBar(SnackBar(
-                                  content: Text(
-                                      sent == 0 ? 'No devices have notifications turned on' : 'Sent to $sent ${sent == 1 ? 'device' : 'devices'}')));
-                            } catch (e) {
-                              messenger.showSnackBar(SnackBar(content: Text('Couldn’t send: $e')));
-                            }
-                          },
+                  // Notifications are for Canvas alerts, which come from the
+                  // every-minute check: premium beta's.
+                  if (premium.on) ...[
+                    _section('Notifications'),
+                    Tile(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Column(children: [
+                        SwitchListTile(
+                          value: notifications.enabled,
+                          onChanged: NotificationService.supported ? (on) => _setDevice(context, on) : null,
+                          title: const Text('Notifications on this device'),
+                          subtitle: Text(_deviceStatus(), style: const TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
                         ),
-                    ]),
-                  ),
-                  _section('Calendar'),
-                  Tile(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Column(children: [
-                      SwitchListTile(
-                        value: calendar.autoSync,
-                        onChanged: calendar.setAutoSync,
-                        title: const Text('Auto-sync with Google'),
-                        subtitle: const Text('Checks Google Calendar every minute, even with Optimizer closed',
-                            style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
-                      ),
-                      SwitchListTile(
-                        value: calendar.keepPast,
-                        onChanged: calendar.setKeepPast,
-                        title: const Text('Keep past events'),
-                        subtitle: const Text(
-                            'Once an event is over, Optimizer keeps it as it was, even if it’s changed or deleted in Google Calendar. '
-                            'For a calendar you add later, you’ll be asked whether to save its past events.',
-                            style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
-                      ),
-                      ListTile(
-                        title: const Text('Calendar layout on this device'),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 2, bottom: 8),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            const Text('Desktop shows the week with hours across, for a tablet or a big phone',
+                        if (notifications.enabled)
+                          ListTile(
+                            leading: const Icon(Icons.notifications_outlined),
+                            title: const Text('Send a test notification'),
+                            subtitle: const Text('Arrives in 10 seconds: lock your phone or leave the app to see it like a real one',
                                 style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
-                            const SizedBox(height: 10),
-                            ValueListenableBuilder(
-                              valueListenable: calendarLayout,
-                              builder: (context, layout, _) => PillTabs<CalendarLayout>(
-                                dense: true,
-                                items: const [
-                                  (CalendarLayout.auto, 'Automatic'),
-                                  (CalendarLayout.phone, 'Phone'),
-                                  (CalendarLayout.desktop, 'Desktop')
-                                ],
-                                selected: layout,
-                                onSelected: setCalendarLayout,
-                              ),
-                            ),
-                          ]),
+                            onTap: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              messenger.showSnackBar(const SnackBar(content: Text('Sending in 10 seconds…')));
+                              try {
+                                final sent = await notifications.sendTest(delaySeconds: 10);
+                                messenger.showSnackBar(SnackBar(
+                                    content: Text(sent == 0
+                                        ? 'No devices have notifications turned on'
+                                        : 'Sent to $sent ${sent == 1 ? 'device' : 'devices'}')));
+                              } catch (e) {
+                                messenger.showSnackBar(SnackBar(content: Text('Couldn’t send: $e')));
+                              }
+                            },
+                          ),
+                      ]),
+                    ),
+                  ],
+                  // Google Calendar is the Calendar page's, a premium beta feature.
+                  if (premium.on) ...[
+                    _section('Calendar'),
+                    Tile(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Column(children: [
+                        SwitchListTile(
+                          value: calendar.autoSync,
+                          onChanged: calendar.setAutoSync,
+                          title: const Text('Auto-sync with Google'),
+                          subtitle: const Text('Checks Google Calendar every minute, even with Optimizer closed',
+                              style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
                         ),
-                      ),
-                      ListTile(
-                        leading: calendar.syncing
-                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.sync),
-                        title: const Text('Sync now'),
-                        subtitle: Text(
-                            calendar.lastSynced == null
-                                ? 'Google and Canvas'
-                                : 'Last synced with Google ${DateFormat.jm().format(calendar.lastSynced!)}',
-                            style: const TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
-                        onTap: calendar.syncing
-                            ? null
-                            : () async {
-                                final messenger = ScaffoldMessenger.of(context);
-                                final result = await calendar.syncNow();
-                                messenger.showSnackBar(SnackBar(content: Text(result)));
-                              },
-                      ),
-                    ]),
-                  ),
-                  if (calendar.canvasFeeds.isNotEmpty) ...[
+                        SwitchListTile(
+                          value: calendar.keepPast,
+                          onChanged: calendar.setKeepPast,
+                          title: const Text('Keep past events'),
+                          subtitle: const Text(
+                              'Once an event is over, Optimizer keeps it as it was, even if it’s changed or deleted in Google Calendar. '
+                              'For a calendar you add later, you’ll be asked whether to save its past events.',
+                              style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
+                        ),
+                        ListTile(
+                          title: const Text('Calendar layout on this device'),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 2, bottom: 8),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              const Text('Desktop shows the week with hours across, for a tablet or a big phone',
+                                  style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
+                              const SizedBox(height: 10),
+                              ValueListenableBuilder(
+                                valueListenable: calendarLayout,
+                                builder: (context, layout, _) => PillTabs<CalendarLayout>(
+                                  dense: true,
+                                  items: const [
+                                    (CalendarLayout.auto, 'Automatic'),
+                                    (CalendarLayout.phone, 'Phone'),
+                                    (CalendarLayout.desktop, 'Desktop')
+                                  ],
+                                  selected: layout,
+                                  onSelected: setCalendarLayout,
+                                ),
+                              ),
+                            ]),
+                          ),
+                        ),
+                        ListTile(
+                          leading: calendar.syncing
+                              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.sync),
+                          title: const Text('Sync now'),
+                          subtitle: Text(
+                              calendar.lastSynced == null
+                                  ? 'Google and Canvas'
+                                  : 'Last synced with Google ${DateFormat.jm().format(calendar.lastSynced!)}',
+                              style: const TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
+                          onTap: calendar.syncing
+                              ? null
+                              : () async {
+                                  final messenger = ScaffoldMessenger.of(context);
+                                  final result = await calendar.syncNow();
+                                  messenger.showSnackBar(SnackBar(content: Text(result)));
+                                },
+                        ),
+                      ]),
+                    ),
+                  ],
+                  if (premium.on && calendar.canvasFeeds.isNotEmpty) ...[
                     _section('Canvas alerts'),
                     Tile(
                       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -201,10 +210,10 @@ class SettingsPage extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(Icons.chat_bubble_outline),
                       title: const Text('Send feedback'),
-                      subtitle: const Text('Report a bug or suggest an improvement',
-                          style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
+                      subtitle:
+                          const Text('Report a bug or suggest an improvement', style: TextStyle(color: AppColors.secondaryText, fontSize: 12.5)),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => FeedbackPage.open(context, premium: premium.on),
+                      onTap: () => FeedbackPage.open(context, premium: premium),
                     ),
                   ),
                   _section('Account'),
@@ -213,7 +222,13 @@ class SettingsPage extends StatelessWidget {
                     child: Column(children: [
                       ListTile(
                         leading: const Icon(Icons.person_outline),
-                        title: Text(user.displayName?.isNotEmpty == true ? user.displayName! : (user.email ?? 'Axis account')),
+                        title: Text(
+                          user.displayName?.isNotEmpty == true ? user.displayName! : 'Add your name',
+                          style: user.displayName?.isNotEmpty == true ? null : const TextStyle(color: AppColors.secondaryText),
+                        ),
+                        trailing:
+                            IconButton(tooltip: 'Edit name', icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _editName(context)),
+                        onTap: () => _editName(context),
                         subtitle: user.email == null && !premium.on
                             ? null
                             : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -241,6 +256,48 @@ class SettingsPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Your name, as Optimizer (and your other Axis apps) show it.
+  Future<void> _editName(BuildContext context) async {
+    final field = TextEditingController(text: user.displayName ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        void save() => Navigator.pop(ctx, field.text.trim());
+        return AlertDialog(
+          title: const Text('Your name'),
+          content: SizedBox(
+            width: 400,
+            child: TextField(
+              controller: field,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              autofillHints: const [AutofillHints.name],
+              decoration: const InputDecoration(labelText: 'Name'),
+              onSubmitted: (_) => save(),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: save, child: const Text('Save')),
+          ],
+        );
+      },
+    );
+    field.dispose();
+    if (name == null || name == (user.displayName ?? '') || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (name.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('Type a name to save it.')));
+      return;
+    }
+    try {
+      await saveDisplayName(user, name);
+      messenger.showSnackBar(const SnackBar(content: Text('Name saved')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Couldn’t save your name: $e')));
+    }
   }
 
   String _deviceStatus() {

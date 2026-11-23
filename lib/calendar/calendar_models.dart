@@ -83,6 +83,7 @@ class CalendarEvent {
     this.done = false,
     this.backdrop = false,
     this.due,
+    this.task = false,
   });
 
   final String id;
@@ -116,8 +117,12 @@ class CalendarEvent {
 
   bool get isTrip => calendar.accountEmail == tripsAccount;
 
-  /// A Canvas item: every one is also on the to-do list, to be checked off.
-  bool get isTask => calendar.accountEmail == 'canvas';
+  /// A to-do of your own shown on a calendar (the To-dos page's month), drawn
+  /// like a Canvas item, with a circle to check it off.
+  final bool task;
+
+  /// A Canvas item, or a to-do: every one is also on the to-do list, to be checked off.
+  bool get isTask => task || calendar.accountEmail == 'canvas';
 
   /// Runs past midnight into another day.
   bool get spansDays {
@@ -162,6 +167,7 @@ class CalendarEvent {
         done: done ?? this.done,
         backdrop: backdrop,
         due: due,
+        task: task,
       );
 }
 

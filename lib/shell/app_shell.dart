@@ -19,8 +19,10 @@ import '../networth/finance_store.dart';
 import '../networth/net_worth_page.dart';
 import '../notifications/notification_service.dart';
 import '../premium/premium_beta.dart';
+import '../settings/feedback_page.dart';
 import '../settings/settings_page.dart';
 import '../theme.dart';
+import '../todos/todos_page.dart';
 import 'side_nav.dart';
 import '../auth/invite_link.dart';
 import '../people/people_page.dart';
@@ -28,7 +30,7 @@ import '../people/people_service.dart';
 import '../trips/trip_store.dart';
 import '../trips/trips_page.dart';
 import '../util/analytics.dart';
-import '../widgets/tiles.dart' show PageEnd;
+import '../widgets/tiles.dart' show PageEnd, PageMenu;
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.user});
@@ -40,7 +42,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 0;
+  int _index = _todosPage;
 
   /// The page last sent to Analytics.
   int? _loggedIndex;
@@ -52,7 +54,7 @@ class _AppShellState extends State<AppShell> {
   late final NotificationService _notifications = NotificationService(widget.user.uid);
   late final HabitStore _habits = HabitStore(widget.user.uid);
   late final AiService _ai = AiService(widget.user.uid);
-  // Net worth and the assistant are premium beta features (switched on in Optic).
+  // Every page but To-dos (and Settings) is a premium beta feature (switched on in Optic).
   late final PremiumBeta _premium = PremiumBeta(widget.user);
   // The built-in assistant, beside every page (and full size on the Ask page).
   late final AssistantController _assistant = AssistantController(
@@ -71,6 +73,11 @@ class _AppShellState extends State<AppShell> {
   );
   // One of it, so a page's title row only rebuilds when it comes or goes.
   late final Widget _assistantArrowRoom = AssistantArrowRoom(open: _assistant.panelOpen);
+
+  /// On a small screen, the side bar slides in over the app from this
+  /// scaffold, opened by the ☰ at the start of each page's top row.
+  final _shellKey = GlobalKey<ScaffoldState>();
+  void _openMenu() => _shellKey.currentState?.openDrawer();
   late final Widget _assistantPanel = AssistantChat(
     controller: _assistant,
     onOpenSettings: _openSettingsFromPanel,
@@ -104,10 +111,23 @@ class _AppShellState extends State<AppShell> {
   }
 
   /// Premium beta switched on or off (in Optic) while the app is open.
+  @override
+  void didUpdateWidget(AppShell old) {
+    super.didUpdateWidget(old);
+    // A new name (from Settings, or just after making the account): People
+    // shows it to others too.
+    final name = widget.user.displayName;
+    if (name != null && name.isNotEmpty && name != old.user.displayName) {
+      _people.registerMe(name).catchError((Object _) {});
+    }
+  }
+
   void _premiumChanged() {
     if (!mounted) return;
     if (!_premium.on) _assistant.panelOpen.value = false;
-    setState(() {});
+    setState(() {
+      if (!_premium.on) _focusOpen = false;
+    });
   }
 
   /// Back from Google after Connect or Reconnect: link the account and say how it went.
@@ -164,32 +184,33 @@ class _AppShellState extends State<AppShell> {
     (icon: Icons.show_chart_outlined, selected: Icons.show_chart, label: 'Net worth'),
     (icon: Icons.auto_awesome_outlined, selected: Icons.auto_awesome, label: 'Ask'),
     (icon: Icons.people_outline, selected: Icons.people, label: 'People'),
-    // In the website's side bar only; on a phone it's under your picture.
     (icon: Icons.settings_outlined, selected: Icons.settings, label: 'Settings'),
+    // Last here so the pages before keep their numbers; first in the bars.
+    (icon: Icons.check_circle_outline, selected: Icons.check_circle, label: 'To-dos'),
   ];
+  static const _homePage = 0;
   static const _calendarPage = 1;
   static const _tripsPage = 2;
   static const _netWorthPage = 4;
   static const _askPage = 5;
   static const _peoplePage = 6;
   static const _settingsPage = 7;
+  static const _todosPage = 8;
 
-  /// Premium beta's pages: without it they're left out of the bars.
-  static const _premiumPages = {_netWorthPage, _askPage};
+  /// Everyone's pages: To-dos and Settings. The rest are premium beta's and
+  /// left out of the bars without it.
+  static const _everyonePages = {_todosPage, _settingsPage};
 
-  bool _shown(int page) => _premium.on || !_premiumPages.contains(page);
+  /// Premium beta's pages, in the side bar's order, under a line (as Axis Team sets its extra pages apart).
+  static const _premiumPages = [_homePage, _calendarPage, _tripsPage, 3, _netWorthPage, _askPage, _peoplePage];
+
+  bool _shown(int page) => _premium.on || _everyonePages.contains(page);
 
   /// The side bar's pages.
-  List<int> get _sideBar => [
-        for (var i = 0; i < _destinations.length; i++)
-          if (_shown(i)) i
-      ];
+  List<int> get _sideBar => [_todosPage, _settingsPage, if (_premium.on) ..._premiumPages];
 
-  // A phone's bar holds six at most, so Trips opens from the calendar instead.
-  List<int> get _phoneBar => [
-        for (final i in const [0, _calendarPage, 3, _netWorthPage, _askPage, _peoplePage])
-          if (_shown(i)) i
-      ];
+  /// Where the side bar's lines go: around premium beta's pages.
+  Set<int> get _sideBarLines => _premium.on ? {_everyonePages.length, _sideBar.length} : const {};
 
   @override
   void dispose() {
@@ -218,30 +239,33 @@ class _AppShellState extends State<AppShell> {
     final premium = _premium.on;
     final pushes = wide && AssistantSplit.fits(windowWidth);
     final pages = [
-      DashboardPage(
-        // On a phone there's no side rail, so your picture sits on the first page.
-        account: wide ? null : _accountMenu(),
-        focus: FocusButton(onOpen: () => setState(() => _focusOpen = true)),
-        name: _firstName(widget.user),
-        uid: widget.user.uid,
-        calendar: _calendar,
-        journal: _journal,
-        finance: _finance,
-        money: premium,
-        onNavigate: (i) => setState(() => _index = i),
-      ),
-      CalendarPage(service: _calendar, notifications: _notifications, onOpenTrips: () => setState(() => _index = _tripsPage)),
-      TripsPage(store: _trips, active: _index == _tripsPage, onBack: wide ? null : () => setState(() => _index = _calendarPage)),
-      JournalPage(store: _journal, habits: _habits),
+      premium
+          ? DashboardPage(
+              focus: FocusButton(onOpen: () => setState(() => _focusOpen = true)),
+              name: _firstName(widget.user),
+              uid: widget.user.uid,
+              calendar: _calendar,
+              journal: _journal,
+              finance: _finance,
+              money: premium,
+              onNavigate: (i) => setState(() => _index = i),
+            )
+          : const SizedBox.shrink(),
+      premium
+          ? CalendarPage(service: _calendar, notifications: _notifications, onOpenTrips: () => setState(() => _index = _tripsPage))
+          : const SizedBox.shrink(),
+      premium
+          ? TripsPage(store: _trips, active: _index == _tripsPage, onBack: wide ? null : () => setState(() => _index = _calendarPage))
+          : const SizedBox.shrink(),
+      premium ? JournalPage(store: _journal, habits: _habits) : const SizedBox.shrink(),
       premium ? NetWorthPage(store: _finance, active: _index == _netWorthPage) : const SizedBox.shrink(),
       premium ? ChatPage(controller: _assistant, onOpenSettings: _openSettings) : const SizedBox.shrink(),
-      PeoplePage(people: _people, calendar: _calendar, myEmail: widget.user.email ?? ''),
+      premium ? PeoplePage(people: _people, calendar: _calendar, myEmail: widget.user.email ?? '') : const SizedBox.shrink(),
       SettingsPage(user: widget.user, notifications: _notifications, calendar: _calendar, ai: _ai, premium: _premium, embedded: true),
+      TodosPage(service: _calendar, notifications: _notifications, premium: premium),
     ];
-    // A phone has no Settings page in its bar: back to Home if it was open.
-    if (!wide && _index == _settingsPage) _index = 0;
-    // A premium page with premium beta switched off: back to Home.
-    if (!_shown(_index)) _index = 0;
+    // A premium page with premium beta switched off: back to To-dos.
+    if (!_shown(_index)) _index = _todosPage;
     if (_index != _loggedIndex) {
       _loggedIndex = _index;
       logPage(_destinations[_index].label);
@@ -250,9 +274,14 @@ class _AppShellState extends State<AppShell> {
     // premium beta there's no assistant at all.
     final onAsk = _index == _askPage;
     final assistant = premium && !onAsk;
-    final body = PageEnd(
-      end: assistant ? _assistantArrowRoom : null,
-      child: IndexedStack(index: _index, children: pages),
+    // First in every page's top row on a small screen, the ☰ for the side
+    // bar; last, room for the assistant's arrow in the corner.
+    final body = PageMenu(
+      open: wide ? null : _openMenu,
+      child: PageEnd(
+        end: assistant ? _assistantArrowRoom : null,
+        child: IndexedStack(index: _index, children: pages),
+      ),
     );
 
     final shell = wide
@@ -261,52 +290,57 @@ class _AppShellState extends State<AppShell> {
     // During a session the app stays on the focus page, on every device.
     return FocusGate(
       store: _focus,
+      enabled: premium,
       open: _focusOpen,
       onClose: () => setState(() => _focusOpen = false),
       child: AssistantOverlay(open: _assistant.panelOpen, enabled: !pushes && assistant, arrow: assistant, panel: _assistantPanel, child: shell),
     );
   }
 
-  // No title bar: each page starts right under the status bar.
+  // No title bar or bottom bar: each page starts right under the status bar,
+  // and its ☰ slides the website's side bar in over the app.
   Widget _phoneShell(Widget body) {
-    final bar = _phoneBar;
+    void go(VoidCallback f) {
+      _shellKey.currentState?.closeDrawer();
+      f();
+    }
+
     return Scaffold(
-      body: SafeArea(bottom: false, child: body),
-      bottomNavigationBar: NavigationBar(
-        height: 64,
-        // On Trips, which isn't in the bar, the calendar it opens from stays lit.
-        selectedIndex: bar.indexOf(_index == _tripsPage ? _calendarPage : _index),
-        onDestinationSelected: (i) => setState(() => _index = bar[i]),
-        destinations: [
-          for (final i in bar)
-            NavigationDestination(icon: Icon(_destinations[i].icon), selectedIcon: Icon(_destinations[i].selected), label: _destinations[i].label),
-        ],
+      key: _shellKey,
+      drawer: Drawer(
+        width: SideNav.expandedWidth,
+        backgroundColor: AppColors.background,
+        shape: const Border(right: BorderSide(color: AppColors.border)),
+        child: SafeArea(child: _sideNav(inDrawer: true, go: go)),
+      ),
+      body: SafeArea(child: body),
+    );
+  }
+
+  /// The side bar, on the website's left or (with [inDrawer]) over the app.
+  /// [go] runs what you picked (closing the drawer first).
+  Widget _sideNav({bool inDrawer = false, void Function(VoidCallback) go = _now}) {
+    final side = _sideBar;
+    return SideNav(
+      inDrawer: inDrawer,
+      items: [for (final i in side) _destinations[i]],
+      linesBefore: _sideBarLines,
+      selected: side.indexOf(_index),
+      onSelected: (i) => go(() => setState(() => _index = side[i])),
+      onFeedback: () => go(() => FeedbackPage.open(context, premium: _premium)),
+      account: (expanded) => SideNavAccount(
+        name: (widget.user.displayName?.isNotEmpty ?? false) ? widget.user.displayName! : (widget.user.email ?? ''),
+        email: widget.user.email ?? '',
+        expanded: expanded,
+        onSettings: () => go(_openSettings),
+        onSignOut: () => go(() => FirebaseAuth.instance.signOut()),
       ),
     );
   }
 
-  Widget _wideShell(Widget body) {
-    final side = _sideBar;
-    return Scaffold(
-      body: Row(
-        children: [
-          SideNav(
-            items: [for (final i in side) _destinations[i]],
-            selected: side.indexOf(_index),
-            onSelected: (i) => setState(() => _index = side[i]),
-            account: (expanded) => SideNavAccount(
-              name: (widget.user.displayName?.isNotEmpty ?? false) ? widget.user.displayName! : (widget.user.email ?? ''),
-              email: widget.user.email ?? '',
-              expanded: expanded,
-              onSettings: _openSettings,
-              onSignOut: () => FirebaseAuth.instance.signOut(),
-            ),
-          ),
-          Expanded(child: body),
-        ],
-      ),
-    );
-  }
+  static void _now(VoidCallback f) => f();
+
+  Widget _wideShell(Widget body) => Scaffold(body: Row(children: [_sideNav(), Expanded(child: body)]));
 
   void _tripsChanged() => _calendar.setTrips(_trips.trips);
 
@@ -330,9 +364,10 @@ class _AppShellState extends State<AppShell> {
       'journal' => 3,
       'net_worth' => _netWorthPage,
       'people' => _peoplePage,
-      _ => 0,
+      'todos' => _todosPage,
+      _ => _homePage,
     };
-    setState(() => _index = _shown(i) ? i : 0);
+    setState(() => _index = _shown(i) ? i : _todosPage);
     if (MediaQuery.sizeOf(context).width < 720) _assistant.panelOpen.value = false;
   }
 
@@ -390,14 +425,8 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  /// The Settings page in the side bar on a wide screen; on a phone, opened over the app.
-  void _openSettings() {
-    if (MediaQuery.sizeOf(context).width >= 720) {
-      setState(() => _index = _settingsPage);
-      return;
-    }
-    SettingsPage.open(context, user: widget.user, notifications: _notifications, calendar: _calendar, ai: _ai, premium: _premium);
-  }
+  /// The Settings page, in the side bar on every screen.
+  void _openSettings() => setState(() => _index = _settingsPage);
 
   /// "Alex" from the account's name, or else from its email address.
   static String? _firstName(User u) {
@@ -405,30 +434,5 @@ class _AppShellState extends State<AppShell> {
     final first = from.split(RegExp(r'[\s._\-0-9]+')).firstWhere((w) => w.isNotEmpty, orElse: () => '');
     if (first.isEmpty) return null;
     return '${first[0].toUpperCase()}${first.substring(1).toLowerCase()}';
-  }
-
-  Widget _accountMenu() {
-    final u = widget.user;
-    final name = (u.displayName?.isNotEmpty ?? false) ? u.displayName! : (u.email ?? '');
-    final label = name.isEmpty ? 'Axis user' : name;
-    return PopupMenuButton<String>(
-      tooltip: label,
-      onSelected: (v) {
-        if (v == 'settings') _openSettings();
-        if (v == 'out') FirebaseAuth.instance.signOut();
-      },
-      itemBuilder: (_) => [
-        PopupMenuItem(enabled: false, child: Text(u.email ?? label)),
-        const PopupMenuItem(
-          value: 'settings',
-          child: Row(children: [Icon(Icons.settings_outlined, size: 18), SizedBox(width: 10), Text('Settings')]),
-        ),
-        const PopupMenuItem(value: 'out', child: Text('Sign out')),
-      ],
-      child: CircleAvatar(
-        radius: 16,
-        child: Text(label.characters.first.toUpperCase()),
-      ),
-    );
   }
 }

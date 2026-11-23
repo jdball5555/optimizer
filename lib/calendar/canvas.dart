@@ -44,7 +44,8 @@ class CanvasFeed {
         notifyChanges = d['notifyChanges'] != false,
         itemCount = (d['itemCount'] as num?)?.toInt(),
         lastChecked = asDate(d['lastChecked']),
-        lastError = d['lastError'] as String?;
+        lastError = d['lastError'] as String?,
+        todoList = d['todoList'] as String?;
 
   final String id;
   final String name;
@@ -55,6 +56,11 @@ class CanvasFeed {
   final int? itemCount;
   final DateTime? lastChecked;
   final String? lastError;
+
+  /// The To-dos page group its items are in (a todoLists id, or '' for the
+  /// main one). Set by the app; the server only ever updates other fields.
+  /// Null on a calendar linked before groups.
+  final String? todoList;
 
   /// Each class's color, by course (as saved on the feed).
   final Map<String, Color> courseColors;

@@ -7,6 +7,7 @@ import 'package:optimizer/dashboard/dashboard_page.dart';
 import 'package:optimizer/journal/journal_page.dart';
 import 'package:optimizer/networth/net_worth_page.dart';
 import 'package:optimizer/theme.dart';
+import 'package:optimizer/todos/todos_page.dart';
 import 'package:optimizer/trips/trip_models.dart';
 import 'package:optimizer/trips/trips_page.dart';
 import 'package:optimizer/util/fields.dart';
@@ -18,8 +19,8 @@ import 'preview/calendar_preview_test.dart' show loadFonts, skipPreview;
 import 'preview/pages_preview_test.dart' show journal, finance, shot;
 import 'trips_test.dart' show FakeTrips;
 
-/// Every page as the phone app has it: under a status bar, over the bottom bar,
-/// with the assistant's arrow in the corner. Nothing may overflow or throw, at
+/// Every page as the phone app has it: under a status bar, with the ☰ for the
+/// side bar first in its top row and the assistant's arrow in the corner. Nothing may overflow or throw, at
 /// a small phone's width or a big one's.
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -40,12 +41,9 @@ void main() {
         arrow: true,
         panel: const SizedBox(),
         child: Scaffold(
-          body: SafeArea(bottom: false, child: PageEnd(end: AssistantArrowRoom(open: open), child: page)),
-          bottomNavigationBar: NavigationBar(height: 64, destinations: const [
-            NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Home'),
-            NavigationDestination(icon: Icon(Icons.calendar_view_week_outlined), label: 'Calendar'),
-            NavigationDestination(icon: Icon(Icons.menu_book_outlined), label: 'Journal'),
-          ]),
+          body: SafeArea(
+            child: PageMenu(open: () {}, child: PageEnd(end: AssistantArrowRoom(open: open), child: page)),
+          ),
         ),
       ),
     ));
@@ -66,16 +64,45 @@ void main() {
 
   Trip trip() {
     final start = addDays(dayStart(DateTime.now()), 5);
-    return Trip(id: 'a', title: 'Spring break in New Orleans', destination: 'New Orleans', start: start, end: addDays(start, 4), zone: 'America/Chicago', items: [
-      TripItem(id: 'f', kind: TripItemKind.flight, title: 'AA 123 · AUS – MSY', start: start.add(const Duration(hours: 8)), end: start.add(const Duration(hours: 10)), flight: const {'number': 'AA 123', 'departure': {'iata': 'AUS'}, 'arrival': {'iata': 'MSY'}}),
-      TripItem(id: 's', kind: TripItemKind.stay, title: 'Hotel Monteleone', location: 'New Orleans', start: start.add(const Duration(hours: 15)), end: addDays(start, 4).add(const Duration(hours: 11))),
-      TripItem(id: 'd', kind: TripItemKind.food, title: 'Dinner at Commander’s Palace', start: addDays(start, 1).add(const Duration(hours: 19)), end: addDays(start, 1).add(const Duration(hours: 19))),
-    ]);
+    return Trip(
+        id: 'a',
+        title: 'Spring break in New Orleans',
+        destination: 'New Orleans',
+        start: start,
+        end: addDays(start, 4),
+        zone: 'America/Chicago',
+        items: [
+          TripItem(
+              id: 'f',
+              kind: TripItemKind.flight,
+              title: 'AA 123 · AUS – MSY',
+              start: start.add(const Duration(hours: 8)),
+              end: start.add(const Duration(hours: 10)),
+              flight: const {
+                'number': 'AA 123',
+                'departure': {'iata': 'AUS'},
+                'arrival': {'iata': 'MSY'}
+              }),
+          TripItem(
+              id: 's',
+              kind: TripItemKind.stay,
+              title: 'Hotel Monteleone',
+              location: 'New Orleans',
+              start: start.add(const Duration(hours: 15)),
+              end: addDays(start, 4).add(const Duration(hours: 11))),
+          TripItem(
+              id: 'd',
+              kind: TripItemKind.food,
+              title: 'Dinner at Commander’s Palace',
+              start: addDays(start, 1).add(const Duration(hours: 19)),
+              end: addDays(start, 1).add(const Duration(hours: 19))),
+        ]);
   }
 
   // What to do once the page is up, to reach each screen.
   final screens = <String, (Widget Function(), Future<void> Function(WidgetTester)?)>{
     'home': (() => DashboardPage(uid: 'u', calendar: calendar(), journal: journal(), finance: finance(), onNavigate: (_) {}), null),
+    'todos': (() => TodosPage(service: calendar()), null),
     'week': (() => CalendarPage(service: calendar()), null),
     'month': (() => CalendarPage(service: calendar()), (t) => pickView(t, 'Month')),
     'todo': (() => CalendarPage(service: calendar()), (t) => pickView(t, 'To-do')),
@@ -126,7 +153,8 @@ void main() {
     await t.runAsync(loadFonts);
     await show(t, CalendarPage(service: calendar()), const Size(360, 740));
     for (var i = 0; i < 12; i++) {
-      final title = t.renderObject<RenderParagraph>(find.descendant(of: find.byType(CalendarPage), matching: find.byWidgetPredicate((w) => w is Text && w.style?.fontSize == 19)));
+      final title = t.renderObject<RenderParagraph>(
+          find.descendant(of: find.byType(CalendarPage), matching: find.byWidgetPredicate((w) => w is Text && w.style?.fontSize == 19)));
       expect(title.didExceedMaxLines, isFalse, reason: title.text.toPlainText());
       await t.tap(find.byIcon(Icons.chevron_right).last);
       await settle(t);

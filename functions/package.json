@@ -8,7 +8,7 @@
   "type": "commonjs",
   "private": true,
   "scripts": {
-    "test": "node test_ics.js && node test_google.js && node test_trips.js"
+    "test": "node test_ics.js && node test_google.js && node test_trips.js && node test_refresh_limit.js"
   },
   "dependencies": {
     "firebase-admin": "^14.2.0",

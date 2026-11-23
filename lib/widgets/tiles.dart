@@ -32,6 +32,47 @@ class PageEnd extends InheritedWidget {
   bool updateShouldNotify(PageEnd old) => !identical(old.end, end);
 }
 
+/// On a small screen, how a page's ☰ opens the side bar over the app;
+/// none on the website, where the side bar is always there.
+class PageMenu extends InheritedWidget {
+  const PageMenu({super.key, required this.open, required super.child});
+
+  final VoidCallback? open;
+
+  static VoidCallback? of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<PageMenu>()?.open;
+
+  @override
+  bool updateShouldNotify(PageMenu old) => !identical(old.open, open);
+}
+
+/// What goes first in every page's top row on a small screen: the ☰, its
+/// lines lined up with the page's left edge, as tall as the title. Nothing
+/// where there's no [PageMenu].
+class PageMenuButton extends StatelessWidget {
+  const PageMenuButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final open = PageMenu.of(context);
+    if (open == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Transform.translate(
+        offset: const Offset(-6, 0),
+        child: IconButton(
+          tooltip: 'Menu',
+          constraints: const BoxConstraints.tightFor(width: 36, height: 34),
+          padding: EdgeInsets.zero,
+          // Just its box: the padded tap target would push the title over.
+          style: const ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          icon: const Icon(Icons.menu),
+          onPressed: open,
+        ),
+      ),
+    );
+  }
+}
+
 /// A page's title.
 TextStyle pageTitleStyle(BuildContext c) => TextStyle(
       color: AppColors.primaryText,
@@ -54,6 +95,7 @@ class PageHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const PageMenuButton(),
         Expanded(child: Text(title, style: pageTitleStyle(context))),
         for (final a in actions) ...[const SizedBox(width: 8), a],
         // These titles are in a column down the middle: on a wide enough
@@ -595,6 +637,7 @@ class PageTabsHeader<T> extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(20, PageSpace.top(context) - _tabPad, 8, PageSpace.gap(context) - _tabPad * 3),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Padding(padding: EdgeInsets.only(top: _tabPad), child: PageMenuButton()),
         Expanded(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,

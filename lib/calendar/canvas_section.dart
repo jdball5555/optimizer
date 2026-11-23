@@ -164,11 +164,17 @@ Future<void> pickCalendarColor(BuildContext context, CalendarService service, Go
   if (picked != null) await service.setCalendarColor(course, picked);
 }
 
-/// Asks for a Canvas "Calendar Feed" link and adds it.
-Future<void> showAddCanvasDialog(BuildContext context, CalendarService service, NotificationService? notifications) async {
+/// Asks for a Canvas "Calendar Feed" link and adds it, into a To-dos group
+/// of its own or one you already have. (Its classes stay apart either way:
+/// each item carries its class.) [alerts]: offer notifications about new
+/// assignments (premium beta's: they come from the every-minute check).
+Future<void> showAddCanvasDialog(BuildContext context, CalendarService service, NotificationService? notifications, {bool alerts = true}) async {
   final url = TextEditingController();
   final name = TextEditingController();
-  var notify = true;
+  // Null: a group of its own.
+  String? group;
+  final groups = [service.mainList, ...service.todoLists];
+  var notify = alerts;
   var busy = false;
   String? error;
 
@@ -179,7 +185,9 @@ Future<void> showAddCanvasDialog(BuildContext context, CalendarService service, 
         Future<void> add() async {
           final link = url.text.trim();
           if (!looksLikeCanvasFeed(link)) {
-            setLocal(() => error = 'That isn’t a Canvas calendar feed link. It ends in .ics and has /feeds/calendars/ in it.');
+            setLocal(() => error = looksLikeGoogleCalendar(link)
+                ? 'That’s a Google Calendar link. Only Canvas calendars can be added here; Google Calendar is linked on the Calendar page.'
+                : 'That isn’t a Canvas calendar feed link. It ends in .ics and has /feeds/calendars/ in it.');
             return;
           }
           setLocal(() {
@@ -187,7 +195,7 @@ Future<void> showAddCanvasDialog(BuildContext context, CalendarService service, 
             error = null;
           });
           try {
-            final msg = await service.addCanvasFeed(link, name: name.text.trim(), notify: notify);
+            final msg = await service.addCanvasFeed(link, name: group == null ? name.text.trim() : '', notify: notify, group: group);
             if (ctx.mounted) Navigator.pop(ctx, msg);
           } catch (e) {
             setLocal(() {
@@ -198,7 +206,7 @@ Future<void> showAddCanvasDialog(BuildContext context, CalendarService service, 
         }
 
         return AlertDialog(
-          title: const Text('Add a Canvas calendar'),
+          title: const Text('Sync a Canvas calendar'),
           content: SizedBox(
             width: 460,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -218,25 +226,38 @@ Future<void> showAddCanvasDialog(BuildContext context, CalendarService service, 
                 ),
                 onSubmitted: (_) => busy ? null : add(),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: name,
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                initialValue: group,
                 decoration: const InputDecoration(
-                  labelText: 'Group name',
-                  hintText: 'e.g. Fall 2026',
-                  helperText: 'It’s split into your classes automatically; each can be turned on or off and given a color.',
+                  labelText: 'Put its assignments in',
+                  prefixIcon: Icon(Icons.view_column_outlined),
+                  helperText: 'A group on the To-dos page. Each assignment is still tagged with its class.',
                   helperMaxLines: 2,
                 ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('A group of its own')),
+                  for (final g in groups) DropdownMenuItem(value: g.id, child: Text(g.name, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (v) => setLocal(() => group = v),
               ),
+              if (group == null) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Group name', hintText: 'e.g. School'),
+                ),
+              ],
               const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: notify,
-                onChanged: (v) => setLocal(() => notify = v),
-                title: const Text('Notify me about new assignments'),
-                subtitle:
-                    const Text('And when a due date moves. Checked every minute.', style: TextStyle(color: AppColors.secondaryText, fontSize: 12)),
-              ),
+              if (alerts)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: notify,
+                  onChanged: (v) => setLocal(() => notify = v),
+                  title: const Text('Notify me about new assignments'),
+                  subtitle:
+                      const Text('And when a due date moves. Checked every minute.', style: TextStyle(color: AppColors.secondaryText, fontSize: 12)),
+                ),
               if (error != null) Text(error!, style: const TextStyle(color: AppColors.danger)),
             ]),
           ),
@@ -261,6 +282,14 @@ Future<void> showAddCanvasDialog(BuildContext context, CalendarService service, 
 bool looksLikeCanvasFeed(String link) {
   final u = Uri.tryParse(link.replaceFirst(RegExp(r'^webcals?://', caseSensitive: false), 'https://'));
   return u != null && u.hasAuthority && RegExp(r'^/feeds/calendars/[\w-]+\.ics$', caseSensitive: false).hasMatch(u.path);
+}
+
+/// A Google Calendar link (its address, or an .ics export of it), which
+/// isn't a Canvas calendar.
+bool looksLikeGoogleCalendar(String link) {
+  final u = Uri.tryParse(link.trim().replaceFirst(RegExp(r'^webcals?://', caseSensitive: false), 'https://'));
+  final host = u?.host.toLowerCase() ?? '';
+  return host == 'calendar.google.com' || host.endsWith('.calendar.google.com') || (host == 'www.google.com' && u!.path.startsWith('/calendar'));
 }
 
 /// Removing a Canvas calendar, with a confirmation, for the ⋯ menu.

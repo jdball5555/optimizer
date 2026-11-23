@@ -5,9 +5,12 @@
 //   axisCalendar/{uid}/canvasItems/{itemId}   one assignment or event, shown on the calendar as a task
 //   axisCalendar/{uid}/devices/{deviceId}     browsers and phones to notify
 //
-// Every minute pollCanvasFeeds downloads each feed, writes what changed and
-// notifies about new assignments and moved due dates. A check where nothing
-// changed costs one Firestore read per feed and no writes.
+// With premium beta, pollCanvasFeeds downloads each feed every minute, writes
+// what changed and notifies about new assignments and moved due dates. A
+// check where nothing changed costs one Firestore read per feed and no
+// writes. Without it, feeds are checked only when the app asks
+// (refreshCanvasFeeds: on opening and the refresh button), at most five times
+// in five minutes (refresh_limit.js), and without notifications.
 
 const crypto = require("crypto");
 const { initializeApp } = require("firebase-admin/app");
@@ -17,6 +20,9 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const { parseCalendar } = require("./ics");
 const { notifyUser } = require("./notify");
+const { getAuth } = require("firebase-admin/auth");
+const { hasPremiumBeta, userHasPremiumBeta } = require("./premium");
+const { takeRefresh, waitText } = require("./refresh_limit");
 
 initializeApp();
 const db = getFirestore();
@@ -118,7 +124,9 @@ function itemDoc(it, feedId, isNew) {
  * Brings one feed's items up to date and returns what's worth a notification.
  * [initial] is the first read of a feed: everything is "new", so nothing is announced.
  */
-async function syncFeed(feedRef, feed, { initial = false, downloaded = null } = {}) {
+// [touch]: record when it was checked even if nothing changed (asked for
+// from the app, which shows when Canvas was last checked).
+async function syncFeed(feedRef, feed, { initial = false, downloaded = null, touch = false } = {}) {
   const uid = feedRef.parent.parent.id;
   const items = userDoc(uid).collection("canvasItems");
   const now = Date.now();
@@ -171,7 +179,7 @@ async function syncFeed(feedRef, feed, { initial = false, downloaded = null } = 
   }
 
   const lastChecked = feed.lastChecked && feed.lastChecked.toMillis ? feed.lastChecked.toMillis() : 0;
-  if (writes.length || feed.lastError || initial || now - lastChecked > 30 * 60 * 1000) {
+  if (touch || writes.length || feed.lastError || initial || now - lastChecked > 30 * 60 * 1000) {
     await feedRef.update({
       seen: next,
       itemCount: cal.items.length,
@@ -283,18 +291,35 @@ exports.addCanvasFeed = onCall(async (request) => {
 
 exports.refreshCanvasFeeds = onCall(async (request) => {
   const uid = requireUid(request);
+  // At most five in five minutes, counted where only the server can write
+  // (optimizerSecrets has no rules for the app), so it can't be reset.
+  const limits = db.collection("optimizerSecrets").doc(uid);
+  const now = Date.now();
+  const verdict = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(limits);
+    const r = takeRefresh(snap.exists ? snap.data().canvasRefreshes : null, now);
+    if (r.ok) tx.set(limits, { canvasRefreshes: r.times }, { merge: true });
+    return r;
+  });
+  if (!verdict.ok) {
+    throw new HttpsError("resource-exhausted", waitText(verdict.retryAt, now), { retryAt: verdict.retryAt });
+  }
+
+  // Notifications are premium beta's, like the every-minute check.
+  const notify = hasPremiumBeta(request.auth);
   const feeds = userDoc(uid).collection("canvasFeeds");
   const docs = request.data && request.data.id ? [await feeds.doc(String(request.data.id)).get()] : (await feeds.get()).docs;
   const errors = [];
   for (const d of docs) {
     if (!d.exists) continue;
     try {
-      await announce(await syncFeed(d.ref, d.data()));
+      const result = await syncFeed(d.ref, d.data(), { touch: true });
+      if (notify) await announce(result);
     } catch (e) {
       errors.push(`${d.data().name}: ${e.message}`);
     }
   }
-  return { checked: docs.length, errors };
+  return { checked: docs.length, errors, checkedAt: Date.now() };
 });
 
 exports.removeCanvasFeed = onCall(async (request) => {
@@ -327,11 +352,24 @@ exports.sendTestNotification = onCall(async (request) => {
 
 // ---------------------------------------------------------------- every minute
 
+/** Which of these accounts have premium beta (by their sign-in claim, the one that counts). */
+async function premiumUids(uids) {
+  const out = new Set();
+  for (let i = 0; i < uids.length; i += 100) {
+    const { users } = await getAuth().getUsers(uids.slice(i, i + 100).map((uid) => ({ uid })));
+    for (const u of users) if (userHasPremiumBeta(u)) out.add(u.uid);
+  }
+  return out;
+}
+
 exports.pollCanvasFeeds = onSchedule(
   { schedule: "every 1 minutes", timeoutSeconds: 55, memory: "256MiB", retryCount: 0, maxInstances: 1 },
   async () => {
-    const feeds = (await db.collectionGroup("canvasFeeds").get()).docs
+    const all = (await db.collectionGroup("canvasFeeds").get()).docs
       .filter((d) => d.ref.parent.parent && d.ref.parent.parent.parent.id === "axisCalendar");
+    // Only premium beta's feeds: everyone else's are checked when they ask.
+    const premium = await premiumUids([...new Set(all.map((d) => d.ref.parent.parent.id))]);
+    const feeds = all.filter((d) => premium.has(d.ref.parent.parent.id));
     let i = 0;
     const worker = async () => {
       while (i < feeds.length) {

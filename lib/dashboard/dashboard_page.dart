@@ -191,6 +191,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final hello = greetingAt(now);
     final end = PageEnd.of(context);
     final header = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const PageMenuButton(),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(widget.name == null ? hello : '$hello, ${widget.name}', style: pageTitleStyle(context)),

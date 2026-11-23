@@ -143,7 +143,10 @@ void moreTests() {
       await tester.tap(find.text('To-do').last);
       await tester.pumpAndSettle();
     });
+    // A long press opens its menu; Details has what the feed says.
     await tester.longPress(find.text('Essay 2'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Details'));
     await tester.pumpAndSettle();
     expect(find.textContaining(RegExp(r'^Due .* · 11:59\sPM$')), findsOneWidget);
     expect(find.text('Write 1200 words.'), findsOneWidget);
@@ -168,9 +171,14 @@ void moreTests() {
       await tester.pumpAndSettle();
     });
     expect(find.text('Essay 2'), findsOneWidget);
-    // The overdue one sits above the white Today line, under its own day.
-    expect(find.text('1 overdue above'), findsOneWidget);
-    expect(tester.getTopLeft(find.text('Quiz 4')).dy, lessThan(tester.getTopLeft(find.text('TODAY')).dy));
+    // It opens at the top, on what's due soonest; the overdue one is folded
+    // under the Today line until you open it.
+    expect(tester.getTopLeft(find.text('TODAY')).dy, lessThan(tester.getTopLeft(find.text('Essay 2')).dy));
+    expect(find.text('Quiz 4'), findsNothing);
+    await tester.tap(find.text('1 overdue'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('Quiz 4')).dy, greaterThan(tester.getTopLeft(find.text('TODAY')).dy));
+    expect(tester.getTopLeft(find.text('Quiz 4')).dy, lessThan(tester.getTopLeft(find.text('Essay 2')).dy));
 
     // Checked off: it stays, crossed out, then leaves three seconds after the last tick.
     await tester.tap(find.text('Quiz 4'));

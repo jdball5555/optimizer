@@ -361,10 +361,11 @@ class _CalendarPageState extends State<CalendarPage> {
       final titleStyle = pageTitleStyle(context);
       const subtitleStyle = TextStyle(color: AppColors.secondaryText, fontSize: 13);
       final heading = Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const PageMenuButton(),
         if (!columns)
           IconButton(
             tooltip: 'Calendars and to-do',
-            icon: const Icon(Icons.menu),
+            icon: const Icon(Icons.layers_outlined),
             onPressed: () => _scaffoldKey.currentState?.openDrawer(),
           ),
         // The same width whatever it says, up to a third of the bar.
@@ -484,13 +485,23 @@ class _CalendarPageState extends State<CalendarPage> {
     return Padding(
       padding: EdgeInsets.fromLTRB(2, PageSpace.top(context), 6, 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (PageMenu.of(context) case final menu?)
+          IconButton(
+            tooltip: 'Menu',
+            visualDensity: VisualDensity.compact,
+            padding: padding,
+            constraints: constraints,
+            style: style,
+            icon: const Icon(Icons.menu),
+            onPressed: menu,
+          ),
         IconButton(
           tooltip: 'Calendars',
           visualDensity: VisualDensity.compact,
           padding: padding,
           constraints: constraints,
           style: style,
-          icon: const Icon(Icons.menu),
+          icon: const Icon(Icons.layers_outlined),
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
         if (dated) IconButton(visualDensity: VisualDensity.compact, padding: padding, constraints: constraints, style: style, icon: const Icon(Icons.chevron_left), onPressed: () => _go(-1)),

@@ -15,7 +15,7 @@ import 'ai_service.dart';
 typedef ToolRun = ({Map<String, dynamic> result, String? note, bool changed});
 
 /// The pages the assistant can open.
-const assistantPages = ['home', 'calendar', 'trips', 'journal', 'net_worth', 'people', 'settings'];
+const assistantPages = ['todos', 'home', 'calendar', 'trips', 'journal', 'net_worth', 'people', 'settings'];
 
 /// The assistant's hands: tools Gemini may call, each run here in the app on
 /// your own data, through the same code the app's buttons use (so changes

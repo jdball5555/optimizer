@@ -9,6 +9,7 @@ import 'package:optimizer/people/people_service.dart';
 import 'package:optimizer/theme.dart';
 import 'package:optimizer/trips/trip_models.dart';
 import 'package:optimizer/trips/trip_store.dart';
+import 'package:optimizer/todos/todos_page.dart';
 import 'package:optimizer/trips/trips_page.dart';
 import 'package:optimizer/widgets/tiles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -47,6 +48,7 @@ void main() {
     ('Trips', () => TripsPage(store: TripStore.preview('u', [tokyo()]), active: true), (s) => s == 'Trips'),
     ('A trip', () => TripsPage(store: TripStore.preview('u', [tokyo()])..openId = 't', active: true), (s) => s == 'Tokyo'),
     ('Net worth', () => NetWorthPage(store: finance()), (s) => s == 'Overview'),
+    ('To-dos', () => TodosPage(service: FeedService()), (s) => s == 'To-dos'),
     ('People', () => PeoplePage(people: PeopleService.preview('u', const []), calendar: FeedService(), myEmail: 'me@x.com'), (s) => s == 'People'),
   ];
 

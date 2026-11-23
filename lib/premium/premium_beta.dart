@@ -8,8 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../util/dispose_safe.dart';
 
 /// Premium beta: early features for accounts switched on in Axis Optic.
-/// Right now that's Net worth (everything from Asset Track, on its page and
-/// on Home) and the assistant (its panel, the Ask page, its settings).
+/// That's every page but To-dos (and Settings): Home, Calendar (and linking
+/// Google Calendar), Trips, Journal, Net worth, the assistant and People.
 ///
 /// The switch is the sign-in claim `optimizerPremiumBeta`, which only
 /// Optimizer's server sets (Optic → functions/optic.js), so it can't be

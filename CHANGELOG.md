@@ -5,6 +5,32 @@ Versions follow [Semantic Versioning](https://semver.org): **major** for redesig
 
 The repository starts at v0.3.1. Earlier versions were released to the website before the project was in git, so they are listed here but have no tagged source.
 
+## [1.0.0] — 2026-11-23
+
+### Added
+- Change your name in Settings (Account); People shows the new one too
+- Make an account from the sign-in page (no invitation needed): a regular account, with premium beta only ever switched on from Axis Optic. The sign-in page is laid out like Scorecards', with a short pitch beside the form on a wide screen and the version under it
+- The website (axisoptic.com) can read Optimizer's live version, as it does Scorecards' and Axis Team's
+- To-dos page, open to everyone: all your to-dos in one column by due date, with a month beside it that shows only to-dos (check them off there, or tap a day to add one). A toolbar in the middle of the header switches between that, the urgent / important matrix, and your groups side by side (starting with one blank "To-dos" group), and its New adds a to-do, a group, or a Canvas calendar; every group can be renamed
+- Syncing a Canvas calendar asks whether its assignments get a group of their own or go in one you have (each still tagged with its class)
+- Urgent / important matrix view: drag to-dos from Not sorted into four boxes. While it's your view, the calendar's to-do list tags each to-do with its box
+
+### Changed
+- Without premium beta, Canvas is checked when the app opens (unless it was in the last 5 minutes) and with the To-dos toolbar's refresh button, which says when it last updated; at most 5 refreshes in 5 minutes, counted on the server. No every-minute check and no Canvas notifications without it (Settings' Notifications and Canvas alerts are premium beta's)
+- The To-dos toolbar is centered on the whole page, moving over only when the title needs the room
+- Every other page (Home, Calendar, Trips, Journal, Net worth, Ask, People) is now premium beta, listed under a line in the side bar
+- Only Canvas calendars can be linked from To-dos; a Google Calendar link is turned away with a pointer to the Calendar page
+- Settings' Calendar section (Google sync, calendar layout) only shows with premium beta
+- Focus is premium beta's too: without it, a session never takes over the app, and the app no longer waits on checking for one when it opens
+- Send feedback is laid out like Scorecards' form: what it's about, where, the details, then Submit; just one box to type in. Its places are what you have: To-dos, Canvas sync, notifications and so on, plus premium beta's features (Home, Focus, Calendar, the assistant…) only while you have it
+- On a phone, the bottom bar and your picture are gone: a ☰ at the top left of every page slides the website's side bar in over the app, with every page (Settings too) and your account. The calendar's list of calendars has its own icon now
+- The to-do list opens at the top, on what's due soonest, instead of jumping down to today; overdue to-dos fold under "N overdue" on the Today line
+- A to-do's ⋯ (or a long press) shows what you can do with it straight away: edit, check off, move to a box, open in Canvas, delete. A Canvas item's details are under Details
+
+### Fixed
+- Your name now shows in the side bar and Settings right after making an account, instead of only your email
+- The ☰ lines up with the page's edge
+
 ## [0.3.1] — 2026-11-15
 
 ### Added
@@ -82,4 +108,5 @@ The repository starts at v0.3.1. Earlier versions were released to the website b
 ### Added
 - First version: Home dashboard, Google Calendar with a sideways week, Canvas calendar feeds with push notifications, the Axis Journal, and net worth from Asset Track
 
+[1.0.0]: https://github.com/jdball5555/optimizer/releases/tag/v1.0.0
 [0.3.1]: https://github.com/jdball5555/optimizer/releases/tag/v0.3.1
