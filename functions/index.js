@@ -431,6 +431,6 @@ Object.assign(exports, require("./places"));
 
 Object.assign(exports, require("./assistant"));
 
-// ---------------------------------------------------------------- Optic (the developer app): users and premium beta
+// ---------------------------------------------------------------- Console (Axis Optic's developer app): users and premium beta
 
-Object.assign(exports, require("./optic"));
+Object.assign(exports, require("./console"));

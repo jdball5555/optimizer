@@ -55,7 +55,7 @@ class _AppShellState extends State<AppShell> {
   late final NotificationService _notifications = NotificationService(widget.user.uid);
   late final HabitStore _habits = HabitStore(widget.user.uid);
   late final AiService _ai = AiService(widget.user.uid);
-  // Every page but To-dos (and Settings) is a premium beta feature (switched on in Optic).
+  // Every page but To-dos (and Settings) is a premium beta feature (switched on in Console).
   late final PremiumBeta _premium = PremiumBeta(widget.user);
   // The built-in assistant, beside every page (and full size on the Ask page).
   late final AssistantController _assistant = AssistantController(
@@ -111,7 +111,7 @@ class _AppShellState extends State<AppShell> {
     _premium.addListener(_premiumChanged);
   }
 
-  /// Premium beta switched on or off (in Optic) while the app is open.
+  /// Premium beta switched on or off (in Console) while the app is open.
   @override
   void didUpdateWidget(AppShell old) {
     super.didUpdateWidget(old);

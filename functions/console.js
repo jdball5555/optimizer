@@ -1,21 +1,24 @@
-// Optic integration: lets the Optic developer app (Axis Team's Firebase
-// project) see and manage Optimizer, the same way it does Scorecards.
+// Console integration: lets Console, Axis Optic's developer app (Firebase
+// project axis-optic-ce4f2), see and manage Optimizer, the same way it does
+// Scorecards.
 //
-//   optimizerOpticNewUser  someone opens Optimizer for the first time
-//                          (optimizerPeople/{uid} created) -> "new user" alert
-//   optimizerOpticAdmin    Optic's user admin: list users, view a user, change
-//                          their settings (name, email, sign-in, premium beta)
+//   optimizerConsoleNewUser  someone opens Optimizer for the first time
+//                            (optimizerPeople/{uid} created) -> "new user"
+//                            alert
+//   optimizerConsoleAdmin    Console's user admin: list users, view a user,
+//                            change their settings (name, email, sign-in,
+//                            premium beta)
 //
 // Optimizer shares its Firebase project, and so its sign-ins, with Asset
 // Track and Axis Journal. Optimizer's users are the accounts in
 // optimizerPeople (everyone who has opened it), not every account in the
 // project. Name, email and blocking sign-in change the shared account, so
-// they apply to all three apps; Optic's hints say so.
+// they apply to all three apps; Console's hints say so.
 //
 // Both directions use Google-signed identity tokens from each project's Cloud
 // Functions service account, so there are no secrets to set up:
-//   this project -> reportAppEvent (project-attendance-app)
-//   project-attendance-app's opticService -> optimizerOpticAdmin (here)
+//   this project -> reportAppEvent (axis-optic-ce4f2)
+//   axis-optic-ce4f2's consoleService -> optimizerConsoleAdmin (here)
 // The names start with "optimizer" because function names are shared with
 // Asset Track's codebase in this project.
 
@@ -30,17 +33,19 @@ const auth = getAuth();
 const oidc = new OAuth2Client();
 
 const REPORT_EVENT_URL =
-  "https://us-central1-project-attendance-app.cloudfunctions.net/reportAppEvent";
-const ADMIN_URL = "https://us-central1-project-axis-app.cloudfunctions.net/optimizerOpticAdmin";
+  "https://us-central1-axis-optic-ce4f2.cloudfunctions.net/reportAppEvent";
+const ADMIN_URL = "https://us-central1-project-axis-app.cloudfunctions.net/optimizerConsoleAdmin";
 
-// Axis Team's Cloud Functions accounts (where Optic's opticService runs).
-const OPTIC_SERVICE_ACCOUNTS = [
-  "282213766426-compute@developer.gserviceaccount.com",
-  "project-attendance-app@appspot.gserviceaccount.com",
+// Axis Optic's Cloud Functions accounts (where Console's consoleService runs).
+// The first is "<Axis Optic's project number>-compute@developer.gserviceaccount.com"
+// (Firebase console → Project settings → Project number).
+const CONSOLE_SERVICE_ACCOUNTS = [
+  "139844049918-compute@developer.gserviceaccount.com",
+  "axis-optic-ce4f2@appspot.gserviceaccount.com",
 ];
 
 // ---------------------------------------------------------------------------
-// APP: what Optic shows and can change for an Optimizer user.
+// APP: what Console shows and can change for an Optimizer user.
 // ---------------------------------------------------------------------------
 const APP_COLOR = "#4D6BFF";
 const SHARED = "Shared with Asset Track and Axis Journal, so it changes there too.";
@@ -237,13 +242,13 @@ const actions = {
     if (authUpdate.disabled === true) await auth.revokeRefreshTokens(uid);
     if (premiumBeta !== undefined) await setPremiumBeta(uid, premiumBeta);
     if (Object.keys(peopleUpdate).length) await people.doc(uid).set(peopleUpdate, { merge: true });
-    functions.logger.info(`Optic (${by}) updated ${uid}`, Object.keys(changes));
+    functions.logger.info(`Console (${by}) updated ${uid}`, Object.keys(changes));
     return { ok: true };
   },
 
   async userAction({ uid, id, by }) {
     if (!uid || !id) throw httpError(400, "uid and id are required");
-    functions.logger.info(`Optic (${by}) ran ${id} on ${uid}`);
+    functions.logger.info(`Console (${by}) ran ${id} on ${uid}`);
     if (id === "revoke_sessions") {
       await auth.revokeRefreshTokens(uid);
       return { message: "Signed out on every device." };
@@ -259,7 +264,7 @@ const actions = {
 };
 
 // ---------------------------------------------------------------------------
-// Plumbing (same as Scorecards' optic.js).
+// Plumbing (same as Scorecards' console.js).
 // ---------------------------------------------------------------------------
 function httpError(status, message) {
   const e = new Error(message);
@@ -277,8 +282,8 @@ async function googleIdentityToken(audience) {
   return r.text();
 }
 
-/** Sends an alert to Optic (it decides whether to push it, per its Alerts settings). */
-async function reportToOptic(event, { title, body, data = {} }) {
+/** Sends an alert to Console (it decides whether to push it, per its Alerts settings). */
+async function reportToConsole(event, { title, body, data = {} }) {
   try {
     const token = await googleIdentityToken(REPORT_EVENT_URL);
     const res = await fetch(REPORT_EVENT_URL, {
@@ -287,14 +292,14 @@ async function reportToOptic(event, { title, body, data = {} }) {
       body: JSON.stringify({ event, title, body, data, color: APP_COLOR }),
       signal: AbortSignal.timeout(20000),
     });
-    if (!res.ok) functions.logger.warn(`Optic event ${event}: HTTP ${res.status}`, await res.text());
+    if (!res.ok) functions.logger.warn(`Console event ${event}: HTTP ${res.status}`, await res.text());
   } catch (e) {
-    functions.logger.warn(`Optic event ${event} not sent`, e);
+    functions.logger.warn(`Console event ${event} not sent`, e);
   }
 }
 
 // Someone opened Optimizer for the first time (registerMe in people.js).
-exports.optimizerOpticNewUser = functions.firestore.document("optimizerPeople/{uid}").onCreate(async (snap, context) => {
+exports.optimizerConsoleNewUser = functions.firestore.document("optimizerPeople/{uid}").onCreate(async (snap, context) => {
   const d = snap.data() || {};
   let how = "";
   try {
@@ -302,7 +307,7 @@ exports.optimizerOpticNewUser = functions.firestore.document("optimizerPeople/{u
     how = u.providerData.map((p) => providerLabel(p.providerId)).join(", ");
   } catch (_) {}
   const who = d.name || d.email || "Someone";
-  await reportToOptic("new_user", {
+  await reportToConsole("new_user", {
     title: "⚡ New Optimizer user",
     body: `${who}${d.name && d.email ? ` (${d.email})` : ""}${how ? ` · ${how}` : ""}`,
     data: { uid: context.params.uid },
@@ -311,17 +316,17 @@ exports.optimizerOpticNewUser = functions.firestore.document("optimizerPeople/{u
 
 // Only Axis Team's functions may call this (Cloud IAM), on top of the token
 // check below.
-exports.optimizerOpticAdmin = functions.runWith({ invoker: OPTIC_SERVICE_ACCOUNTS }).https.onRequest(async (req, res) => {
+exports.optimizerConsoleAdmin = functions.runWith({ invoker: CONSOLE_SERVICE_ACCOUNTS }).https.onRequest(async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
   const token = String(req.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   try {
     const ticket = await oidc.verifyIdToken({ idToken: token, audience: ADMIN_URL });
     const p = ticket.getPayload() || {};
-    if (!p.email_verified || !OPTIC_SERVICE_ACCOUNTS.includes(String(p.email).toLowerCase())) {
+    if (!p.email_verified || !CONSOLE_SERVICE_ACCOUNTS.includes(String(p.email).toLowerCase())) {
       throw new Error(`untrusted caller ${p.email || p.sub}`);
     }
   } catch (e) {
-    functions.logger.warn("optimizerOpticAdmin: rejected", e.message);
+    functions.logger.warn("optimizerConsoleAdmin: rejected", e.message);
     return res.status(403).json({ error: "Not allowed" });
   }
 
@@ -332,7 +337,7 @@ exports.optimizerOpticAdmin = functions.runWith({ invoker: OPTIC_SERVICE_ACCOUNT
     return res.status(200).json(await handler(body));
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
-    functions.logger.error(`optimizerOpticAdmin ${body.action} failed`, e);
+    functions.logger.error(`optimizerConsoleAdmin ${body.action} failed`, e);
     return res.status(500).json({ error: "Something went wrong in Optimizer." });
   }
 });

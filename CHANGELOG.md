@@ -5,6 +5,12 @@ Versions follow [Semantic Versioning](https://semver.org): **major** for redesig
 
 The repository starts at v0.3.1. Earlier versions were released to the website before the project was in git, so they are listed here but have no tagged source.
 
+## [1.0.2] — 2026-11-25
+
+### Changed
+- Feedback no longer lives in Optimizer's project: the app sends it to Axis Optic, my developer project, through its `feedback` function, which checks the user's sign-in and shows them only their own tickets
+- The admin connection for my developer app, Console, is `functions/console.js` (was `optic.js`), and it accepts calls only from Axis Optic's Google-signed service accounts, with no shared secrets
+
 ## [1.0.1] — 2026-11-23
 
 ### Security

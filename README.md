@@ -18,7 +18,7 @@ Optimizer started as a way to stop switching between Google Calendar, Canvas, my
 - **Net worth.** Everything from Asset Track: net worth over time, accounts, spending by category, investments and gas mileage.
 - **Assistant.** Gemini, run by the server, with tools to read and change the calendar, to-dos and trips. Each kind of data and each kind of change is switched on separately, changes can be confirmed first, and every change can be undone.
 - **Focus.** Timed focus sessions that lock the app to one screen on every device until they end.
-- **Premium beta.** Early features (net worth and the assistant) for accounts switched on from my developer app, Axis Optic, enforced on the server.
+- **Premium beta.** Early features (net worth and the assistant) for accounts switched on from Console, my Axis Optic developer app, enforced on the server.
 
 ## Built with
 
@@ -50,7 +50,7 @@ functions/
   people.js            invitations, groups, shared trips
   trips.js, places.js  flights, drive times, addresses
   assistant.js         the assistant's relay to Gemini
-  optic.js, premium.js user admin and premium beta for Axis Optic
+  console.js, premium.js user admin and premium beta for Console (Axis Optic)
 test/                  widget and unit tests, plus layout previews
 ```
 
@@ -61,6 +61,7 @@ This repository is public as part of my portfolio, so everything that connects t
 - **No credentials or project connection.** The Firebase config (`lib/firebase_options.dart`, `web/firebase-messaging-sw.js`), the project alias and the journal's encryption key are git-ignored. Each has a `.example` template with placeholders.
 - **Server-side secrets** (the Google OAuth client secret and API keys) live in Firebase's secret store, never in the code.
 - **Data access.** Every user's data sits under their own user ID and the Firestore rules let only that user read it (`firestore.rules`, the project's live rules, which also cover the other Axis apps sharing it). Shared data, like invitations and Google sign-ins, is server-only, written by Cloud Functions that act only for the signed-in caller. Anything matched by email needs a verified one, and premium beta's features are checked on the server, not only hidden in the app.
+- **Feedback and developer admin.** Feedback isn't stored in Optimizer's project: it goes to Axis Optic's `feedback` function, which shows each user only their own tickets. `functions/console.js`, which my developer app Console uses for user admin, accepts calls only from Axis Optic's server.
 - **Test data is made up.** Names, places and amounts in the tests and previews are fictional.
 
 ## Running locally
@@ -80,7 +81,7 @@ This project was built with AI-assisted development. I designed the app and dire
 
 ## Status
 
-**Current version: 0.3.1.** In active development. See the [changelog](CHANGELOG.md) for version history.
+**Current version: 1.0.2.** In active development. See the [changelog](CHANGELOG.md) for version history.
 
 ## License
 

@@ -12,11 +12,11 @@ import '../widgets/tiles.dart';
 
 /// Sends a bug or idea to the Axis Optic inbox.
 ///
-/// Optic lives in the Axis Team Firebase project, so tickets go through its
-/// `submitAppFeedback` function (axis-team/functions/index.js). It checks
-/// this Optimizer sign-in and files the ticket where Optic (and the
-/// developers' phones) pick it up.
-Future<void> sendOpticFeedback({required bool isBug, required String location, required String message}) async {
+/// Tickets live in Axis Optic (axis-optic-ce4f2), not in this project. They
+/// go through its `feedback` function, which checks this Optimizer sign-in
+/// and files the ticket where Console (Axis Optic's developer app) and the
+/// developers' phones pick it up.
+Future<void> sendFeedback({required bool isBug, required String location, required String message}) async {
   final user = FirebaseAuth.instance.currentUser;
   final token = await user?.getIdToken();
   if (token == null) throw const FeedbackException('Sign in to send feedback.');
@@ -24,9 +24,10 @@ Future<void> sendOpticFeedback({required bool isBug, required String location, r
   try {
     res = await http
         .post(
-          Uri.parse('https://us-central1-project-attendance-app.cloudfunctions.net/submitAppFeedback'),
+          Uri.parse('https://us-central1-axis-optic-ce4f2.cloudfunctions.net/feedback'),
           headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
           body: jsonEncode({
+            'action': 'submit',
             'type': isBug ? 'Bug' : 'Improvement',
             'location': location,
             'message': message,
@@ -116,7 +117,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
     }
     setState(() => _sending = true);
     try {
-      await sendOpticFeedback(isBug: _bug, location: _location, message: text);
+      await sendFeedback(isBug: _bug, location: _location, message: text);
       if (!mounted) return;
       _say('Thank you! Your feedback helps make Optimizer better.');
       Navigator.of(context).pop();

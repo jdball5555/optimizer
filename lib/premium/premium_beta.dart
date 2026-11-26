@@ -12,7 +12,7 @@ import '../util/dispose_safe.dart';
 /// Google Calendar), Trips, Journal, Net worth, the assistant and People.
 ///
 /// The switch is the sign-in claim `optimizerPremiumBeta`, which only
-/// Optimizer's server sets (Optic → functions/optic.js), so it can't be
+/// Optimizer's server sets (Console → functions/console.js), so it can't be
 /// turned on from the app. Sign-ins are shared with Asset Track and Axis
 /// Journal, hence the app's name in the claim.
 ///

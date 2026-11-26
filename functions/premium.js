@@ -1,5 +1,5 @@
 // Premium beta: early features for accounts switched on in Axis Optic (see
-// optic.js). Right now: net worth and the assistant.
+// console.js). Right now: net worth and the assistant.
 //
 // The switch is the sign-in claim `optimizerPremiumBeta`. Sign-ins (and so
 // their claims) are shared with Asset Track and Axis Journal, which is why
